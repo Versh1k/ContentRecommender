@@ -19,13 +19,4 @@ public class Movie : ContentItem
     public string? Director { get; set; }
     public List<string>? Actors { get; set; }
     public ContentTypeCategory Category { get; set; } = ContentTypeCategory.FeatureFilm;
-    public ContentFormat GetContentFormat()
-    {
-        return Category switch
-        {
-            ContentTypeCategory.TvSeries or ContentTypeCategory.MiniSeries => ContentFormat.Series,
-            ContentTypeCategory.Cartoon => ContentFormat.Cartoon,
-            _ => ContentFormat.Movie
-        };
-    }
 }

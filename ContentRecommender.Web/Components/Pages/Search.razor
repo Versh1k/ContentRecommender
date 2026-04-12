@@ -211,22 +211,6 @@
         "триллер", "военный", "вестерн", "детектив", "биография"
     };
 
-    private static readonly Dictionary<MoodType, List<string>> MoodBaseGenres = new()
-    {
-        { MoodType.Romantic, new() { "мелодрама", "романтика" } },
-        { MoodType.Mysterious, new() { "детектив", "триллер" } },
-        { MoodType.Sad, new() { "драма", "биография" } },
-        { MoodType.Funny, new() { "комедия", "семейный" } },
-        { MoodType.Crime, new() { "криминал", "детектив" } },
-        { MoodType.Military, new() { "военный", "исторический" } },
-        { MoodType.Everyday, new() { "документальный", "семейный" } },
-        { MoodType.Tense, new() { "триллер", "боевик" } },
-        { MoodType.Horror, new() { "ужасы", "мистика" } },
-        { MoodType.Inspiring, new() { "биография", "спортивный" } },
-        { MoodType.Epic, new() { "фэнтези", "приключения" } },
-        { MoodType.Adventure, new() { "приключения", "боевик" } }
-    };
-
     private HashSet<string> _favoriteKeys = new();
     private string? _currentUserId;
     private bool _isDisposed = false;
@@ -385,16 +369,14 @@
 
     private async Task PerformSearch()
     {
+        if (string.IsNullOrWhiteSpace(currentSearchQuery))
+        {
+            errorMessage = "Опишите своё настроение";
+            return;
+        }
+
         try
         {
-            if (string.IsNullOrWhiteSpace(currentSearchQuery) && !selectedManualGenres.Any())
-            {
-                errorMessage = currentSearchMode == SearchMode.ByMood
-                    ? "Опишите своё настроение или что хотите найти"
-                    : "Введите ключевые слова или выберите жанры";
-                return;
-            }
-
             isSearching = true;
             errorMessage = null;
             detectedMood = null;
@@ -403,55 +385,39 @@
             isGenresDropdownOpen = false;
             StateHasChanged();
 
+            // Лог: что ввёл пользователь
+            Console.WriteLine($"Пользователь ввёл: {currentSearchQuery}");
+
             var searchSeed = Guid.NewGuid();
             var finalGenres = new List<string>();
 
-            if (currentSearchMode == SearchMode.ByMood)
+            // ML предсказание (уверенность не проверяем, используем всегда)
+            var (mlMood, mlConfidence) = MoodAnalysisService.AnalyzeMoodWithConfidence(currentSearchQuery);
+            Console.WriteLine($"ML модель: Настроение={mlMood}, Уверенность={mlConfidence:F2}");
+
+            // Всегда берём настроение и маппим в жанры
+            detectedMood = mlMood;
+            if (GenreMapper.MoodBaseGenres.TryGetValue(mlMood, out var baseGenres))
             {
-                var directGenres = GenreMapper.ExtractGenres(userInput);
-                Console.WriteLine($"Прямые жанры: {(directGenres.Any() ? string.Join(", ", directGenres) : "не найдены")}");
-
-                var (mlMood, mlConfidence) = MoodAnalysisService.AnalyzeMoodWithConfidence(userInput);
-                Console.WriteLine($"ML модель: Настроение={mlMood}, Уверенность={mlConfidence:F2}");
-
-                detectedMood = mlMood;
-
-                if (detectedMood.HasValue && MoodBaseGenres.ContainsKey(detectedMood.Value))
-                {
-                    var baseGenres = MoodBaseGenres[detectedMood.Value];
-                    Console.WriteLine($"Настроение: {detectedMood.Value} -> базовые жанры: {string.Join(", ", baseGenres)}");
-                    finalGenres.AddRange(baseGenres);
-                }
-
-                if (directGenres.Any())
-                {
-                    Console.WriteLine($"Прямые жанры из запроса: {string.Join(", ", directGenres)}");
-                    foreach (var genre in directGenres)
-                        if (!finalGenres.Contains(genre)) finalGenres.Add(genre);
-                }
+                finalGenres.AddRange(baseGenres);
+                Console.WriteLine($"Настроение: {mlMood} -> базовые жанры: {string.Join(", ", baseGenres)}");
             }
             else
             {
-                if (selectedManualGenres.Any())
-                    finalGenres.AddRange(selectedManualGenres);
-
-                if (!string.IsNullOrWhiteSpace(keywordSearchQuery))
-                    finalGenres.Add($"keyword:{keywordSearchQuery.Trim()}");
+                // Защита от отсутствия маппинга (маловероятно)
+                finalGenres = new List<string> { "драма", "приключения" };
+                Console.WriteLine($"Жанры для настроения {mlMood} не найдены, используем fallback");
             }
 
-            recommendedGenres = finalGenres.Distinct().Take(MaxGenres).ToList();
-
-            Console.WriteLine($"Итоговое настроение: {detectedMood}");
-            Console.WriteLine($"Жанры для поиска ({recommendedGenres.Count}): {string.Join(", ", recommendedGenres)}");
-            Console.WriteLine($"=== КОНЕЦ ПОИСКА ===\n");
+            recommendedGenres = finalGenres.Distinct().ToList();
 
             if (!recommendedGenres.Any())
             {
-                Console.WriteLine("Жанры не определены, поиск отменён");
                 errorMessage = "Не удалось определить подходящие жанры. Попробуйте другой запрос.";
                 return;
             }
 
+            // Поиск фильмов
             results = new List<ContentItem>();
 
             if (selectedContentType == SearchCriteria.SearchContentType.All ||
@@ -473,7 +439,11 @@
             if (selectedContentType == SearchCriteria.SearchContentType.All ||
                 selectedContentType == SearchCriteria.SearchContentType.AllBooks)
             {
-                var books = await GoogleBooksService.SearchWithFallback(recommendedGenres, detectedMood, 8, searchSeed);
+                var books = await GoogleBooksService.SearchBooksByKeywordsWithFallbackAsync(
+                    recommendedGenres,
+                    selectedContentType,
+                    10
+                );
                 results.AddRange(books);
             }
 
@@ -496,7 +466,7 @@
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[SearchState] Ошибка сохранения (возможно, пререндеринг): {ex.Message}");
+                    Console.WriteLine($"[SearchState] Ошибка сохранения: {ex.Message}");
                 }
             }
         }

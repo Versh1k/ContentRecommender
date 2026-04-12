@@ -14,12 +14,9 @@ public class ContentCache
     public string Title { get; set; } = string.Empty;
 
     public string? Description { get; set; }
-    
-    [MaxLength(500)]
-    public string? CoverUrl { get; set; }
 
     [MaxLength(500)]
-    public string? SearchKey { get; set; }
+    public string? CoverUrl { get; set; }
 
     public int? Year { get; set; }
     public double? Rating { get; set; }

@@ -1,5 +1,6 @@
 ﻿using ContentRecommender.Core.Configuration;
 using ContentRecommender.Core.Models;
+using ContentRecommender.Core.Services;
 using ContentRecommender.Data;
 using ContentRecommender.Data.Repositories;
 using ContentRecommender.Web.Components;
@@ -11,12 +12,13 @@ using Microsoft.ML;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Добавляем сервисы Blazor
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddControllers();
 
-// Razor Pages
+// Добавляем поддержку Razor Pages (для аутентификации)
 builder.Services.AddRazorPages()
     .AddRazorRuntimeCompilation();
 
@@ -48,7 +50,7 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.SlidingExpiration = true;
 });
 
-// Аутентификацию и авторизацию
+// Добавляем аутентификацию и авторизацию
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
@@ -83,7 +85,7 @@ builder.Services.AddHttpClient<GoogleBooksService>((sp, client) =>
 });
 
 // ML Context
-builder.Services.AddSingleton(_ => new MLContext(seed: 42));
+builder.Services.AddSingleton<MLContext>();
 builder.Services.AddScoped<IMoodAnalysisService, MoodAnalysisService>();
 
 // Другие сервисы
@@ -91,8 +93,13 @@ builder.Services.AddScoped<IContentDetailService, ContentDetailService>();
 builder.Services.AddScoped<IFavoritesService, FavoritesService>();
 builder.Services.AddScoped<ISearchStateService, SearchStateService>();
 
+// Кэш (регистрация ДО builder.Build())
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<IContentCacheService, ContentCacheService>();
+
 var app = builder.Build();
 
+// Настройка конвейера HTTP-запросов
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
@@ -104,7 +111,6 @@ else
 }
 
 app.UseHttpsRedirection();
-
 app.UseStaticFiles();
 
 app.UseAuthentication();
@@ -112,12 +118,13 @@ app.UseAuthorization();
 
 app.UseAntiforgery();
 
+// Маршруты
 app.MapRazorPages();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-
 app.MapControllers();
 
+// Применяем миграции
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();

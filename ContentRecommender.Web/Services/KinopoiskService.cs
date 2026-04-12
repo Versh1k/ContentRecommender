@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 
 namespace ContentRecommender.Web.Services;
 
-public class KinopoiskService : IContentExternalService
+public class KinopoiskService
 {
     private readonly HttpClient _http;
     private readonly KinopoiskConfig _cfg;
@@ -51,22 +51,6 @@ public class KinopoiskService : IContentExternalService
         [ContentTypeCategory.ShortFilm] = new() { 27 }
     };
 
-    private static readonly Dictionary<MoodType, List<int>> MoodToGenres = new()
-    {
-        [MoodType.Romantic] = new() { 8 },
-        [MoodType.Mysterious] = new() { 5, 10 },
-        [MoodType.Sad] = new() { 4, 17 },
-        [MoodType.Funny] = new() { 3, 22 },
-        [MoodType.Crime] = new() { 12, 10 },
-        [MoodType.Military] = new() { 16, 7 },
-        [MoodType.Everyday] = new() { 6, 22 },
-        [MoodType.Tense] = new() { 10, 11 },
-        [MoodType.Horror] = new() { 11 },
-        [MoodType.Inspiring] = new() { 17, 19 },
-        [MoodType.Epic] = new() { 14, 2 },
-        [MoodType.Adventure] = new() { 9, 1 }
-    };
-
     public KinopoiskService(HttpClient http, KinopoiskConfig cfg, IMoodAnalysisService mood)
     {
         _http = http;
@@ -78,7 +62,6 @@ public class KinopoiskService : IContentExternalService
     {
         var type = MapToType(criteria.SelectedContentType);
         var genres = criteria.Genres?.Any() == true ? criteria.Genres : GetRandomGenresForType(type);
-
         return await SearchWithFallback(genres, type, 15, criteria.RandomSeed);
     }
 
@@ -105,15 +88,15 @@ public class KinopoiskService : IContentExternalService
                 foreach (var genreId in genreIds)
                 {
                     if (movies.Count >= limit) break;
-                    var url = $"{_cfg.BaseUrl}?limit=40&genres={genreId}&ratingFrom=6&order=RATING";
-                    var fetched = await FetchMovies(url, type, limit, random, useRandomPage: false, requestedGenreNames: genreNames);
+                    var url = $"{_cfg.BaseUrl}?limit=40&genres={genreId}&ratingFrom=5&order=RATING";
+                    var fetched = await FetchMovies(url, type, limit, random);
                     movies.AddRange(fetched.Where(m => !movies.Any(x => x.ExternalId == m.ExternalId)));
                 }
             }
             else if (!string.IsNullOrEmpty(keywordQuery))
             {
                 var url = $"{_cfg.BaseUrl}?keyword={Uri.EscapeDataString(keywordQuery)}&limit=40&ratingFrom=5&order=RATING";
-                var keywordMovies = await FetchMovies(url, type, limit, random, useRandomPage: false, requestedGenreNames: null);
+                var keywordMovies = await FetchMovies(url, type, limit, random);
                 movies.AddRange(keywordMovies);
             }
         }
@@ -121,19 +104,18 @@ public class KinopoiskService : IContentExternalService
         if (!string.IsNullOrEmpty(keywordQuery) && movies.Count < limit)
         {
             var url = $"{_cfg.BaseUrl}?keyword={Uri.EscapeDataString(keywordQuery)}&limit=40&ratingFrom=5&order=RATING";
-            var keywordMovies = await FetchMovies(url, type, limit, random, useRandomPage: false, requestedGenreNames: null);
+            var keywordMovies = await FetchMovies(url, type, limit, random);
             movies.AddRange(keywordMovies.Where(m => !movies.Any(x => x.ExternalId == m.ExternalId)));
         }
 
         return movies.OrderByDescending(m => m.Rating ?? 0).Take(limit).ToList();
     }
 
-    private async Task<List<Movie>> FetchMovies(string url, ContentTypeCategory targetType, int limit, Random random, bool useRandomPage = true, List<string>? requestedGenreNames = null)
+    private async Task<List<Movie>> FetchMovies(string url, ContentTypeCategory targetType, int limit, Random random)
     {
         try
         {
-            if (useRandomPage) url += $"&page={random.Next(1, 4)}";
-            else url += "&page=1";
+            url += $"&page={random.Next(1, 4)}";
 
             var response = await _http.GetAsync(url);
             if (!response.IsSuccessStatusCode) return new();
@@ -148,42 +130,12 @@ public class KinopoiskService : IContentExternalService
                 var movie = MapToMovie(item);
 
                 if (!MatchesType(movie, targetType)) continue;
-
                 if ((movie.Rating ?? 0) < 5) continue;
-
                 if (string.IsNullOrEmpty(movie.CoverUrl)) continue;
-
-                if (requestedGenreNames?.Any() == true)
-                {
-                    var movieGenres = movie.Genres?.Where(g => !string.IsNullOrEmpty(g)).Select(g => g.Trim().ToLowerInvariant()) ?? Enumerable.Empty<string>();
-
-                    var matches = requestedGenreNames.Any(rg =>
-                    {
-                        var rgLower = rg.Trim().ToLowerInvariant();
-                        return movieGenres.Any(mg =>
-                            mg == rgLower ||
-                            mg.Contains(rgLower) ||
-                            rgLower.Contains(mg) ||
-                            AreGenresSimilar(mg, rgLower)
-                        );
-                    });
-
-                    if (!matches)
-                    {
-                        var mgList = string.Join(", ", movieGenres);
-                        var rgList = string.Join(", ", requestedGenreNames);
-                        Console.WriteLine($"[Kinopoisk] ❌ Отброшен: '{movie.Title}' — жанры=[{mgList}], ожидалось=[{rgList}]");
-                    }
-
-                    if (!matches) continue;
-                }
 
                 movies.Add(movie);
                 if (movies.Count >= limit) break;
             }
-
-            Console.WriteLine($"[Kinopoisk] Запрос: {url.Substring(0, Math.Min(120, url.Length))}...");
-            Console.WriteLine($"[Kinopoisk] Получено {data.items.Count}, отфильтровано до {movies.Count}");
 
             return movies;
         }
@@ -193,66 +145,26 @@ public class KinopoiskService : IContentExternalService
             return new();
         }
     }
-    private bool AreGenresSimilar(string genre1, string genre2)
-    {
-        var synonyms = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["ужасы"] = new() { "хоррор", "horror", "страшный" },
-            ["мистика"] = new() { "мистический", "сверхъестественное", "paranormal" },
-            ["фэнтези"] = new() { "fantasy", "волшебный", "сказка" },
-            ["детектив"] = new() { "расследование", "сыщик", "mystery" },
-            ["триллер"] = new() { "напряженный", "suspense", "психологический" },
-            ["комедия"] = new() { "юмор", "смешной", "comedy" },
-            ["драма"] = new() { "драматический", "drama" },
-            ["боевик"] = new() { "экшен", "action", "приключения" }
-        };
 
-        return synonyms.TryGetValue(genre1, out var list) && list.Contains(genre2) ||
-               synonyms.TryGetValue(genre2, out list) && list.Contains(genre1);
-    }
     private List<string> GetRandomGenresForType(ContentTypeCategory type)
     {
         var genreIds = TypeGenres.GetValueOrDefault(type, TypeGenres[ContentTypeCategory.FeatureFilm]);
         var randomId = genreIds[_rnd.Next(genreIds.Count)];
-
         return GenreIds.Where(kv => kv.Value == randomId).Select(kv => kv.Key).ToList();
     }
 
-    private bool MatchesType(Movie movie, ContentTypeCategory target)
-    {
-        return movie.Category == target;
-    }
+    private bool MatchesType(Movie movie, ContentTypeCategory target) => movie.Category == target;
 
     private ContentTypeCategory DetermineCategory(FilmItem item)
     {
         var genres = item.genres?.Select(g => g.genre?.ToLower()) ?? Enumerable.Empty<string>();
         var type = item.type?.ToUpper() ?? "";
 
-        if (genres.Contains("аниме") || genres.Contains("anime"))
-        {
-            return ContentTypeCategory.Cartoon;
-        }
-
-        if (genres.Contains("мультфильм") || genres.Contains("animation") || genres.Contains("cartoon"))
-        {
-            return ContentTypeCategory.Cartoon;
-        }
-
-        if (genres.Contains("детский") && type != "FILM")
-        {
-            return ContentTypeCategory.Cartoon;
-        }
-
-        if (item.movieLength.HasValue && item.movieLength < 45)
-        {
-            return ContentTypeCategory.ShortFilm;
-        }
-
-        if (type.Contains("TV_SERIES") || type.Contains("MINI_SERIES") || type.Contains("TV_SHOW"))
-        { 
-            return ContentTypeCategory.TvSeries;
-        }
-
+        if (genres.Contains("аниме") || genres.Contains("anime")) return ContentTypeCategory.Cartoon;
+        if (genres.Contains("мультфильм") || genres.Contains("animation") || genres.Contains("cartoon")) return ContentTypeCategory.Cartoon;
+        if (genres.Contains("детский") && type != "FILM") return ContentTypeCategory.Cartoon;
+        if (item.movieLength.HasValue && item.movieLength < 45) return ContentTypeCategory.ShortFilm;
+        if (type.Contains("TV_SERIES") || type.Contains("MINI_SERIES") || type.Contains("TV_SHOW")) return ContentTypeCategory.TvSeries;
         return ContentTypeCategory.FeatureFilm;
     }
 
@@ -262,7 +174,8 @@ public class KinopoiskService : IContentExternalService
         if (!string.IsNullOrEmpty(cover))
         {
             cover = cover.Replace("https://st.kp.yandex.net/images/film_iphone/", "https://st.kp.yandex.net/images/film_big/")
-                         .Replace("/300x450/", "/700x1000/").Replace("/600x900/", "/700x1000/");
+                         .Replace("/300x450/", "/700x1000/")
+                         .Replace("/600x900/", "/700x1000/");
         }
 
         return new Movie
@@ -271,9 +184,9 @@ public class KinopoiskService : IContentExternalService
             Description = item.description,
             Year = item.year,
             Rating = item.ratingKinopsiok,
-            Genres = item.genres?.Select(g => g.genre).Where(g => !string.IsNullOrEmpty(g)).ToList() ?? new(),
+            Genres = item.genres?.Select(g => g.genre).Where(g => !string.IsNullOrEmpty(g)).Cast<string>().ToList() ?? new List<string>(),
             DurationMinutes = item.movieLength,
-            Director = !string.IsNullOrEmpty(item.directors?.FirstOrDefault()?.name) ? item.directors.FirstOrDefault().name : null,
+            Director = item.directors?.FirstOrDefault()?.name,
             CoverUrl = cover,
             Format = ContentFormat.Movie,
             ExternalId = item.kinopoiskId.ToString(),
@@ -297,11 +210,7 @@ public class KinopoiskService : IContentExternalService
     public Task<List<Movie>> SearchMoviesByKeywordsAsync(List<string> keywords, SearchCriteria.SearchContentType type) => Task.FromResult(new List<Movie>());
     public Task<List<Book>> SearchBooksByKeywordsAsync(List<string> keywords, SearchCriteria.SearchContentType type) => Task.FromResult(new List<Book>());
 
-    private class KinopoiskResponse
-    {
-        public List<FilmItem> items { get; set; } = new();
-    }
-
+    private class KinopoiskResponse { public List<FilmItem> items { get; set; } = new(); }
     private class FilmItem
     {
         public int kinopoiskId { get; set; }
@@ -317,7 +226,6 @@ public class KinopoiskService : IContentExternalService
         public string? posterUrl { get; set; }
         [JsonPropertyName("type")] public string? type { get; set; }
     }
-
     private class GenreItem { public string? genre { get; set; } }
     private class PersonItem { public string? name { get; set; } }
 }

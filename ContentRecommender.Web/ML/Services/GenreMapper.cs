@@ -19,9 +19,6 @@ public static class GenreMapper
     { MoodType.Epic, new() { "фэнтези", "приключения" } },
     { MoodType.Adventure, new() { "приключения", "боевик" } }
 };
-
-    // ✅ КЛЮЧЕВЫЕ СЛОВА ТОЛЬКО ДЛЯ ИЗВЛЕЧЕНИЯ ПРЯМЫХ ЖАНРОВ
-    // (без маппинга на настроение — только поиск в тексте)
     private static readonly Dictionary<string, List<string>> _genreKeywords = new()
     {
         ["комедия"] = new() { "смешн", "юмор", "комеди", "прикол", "смех", "весел", "забавн", "шутк", "ирони", "пароди", "фарс", "анекдот", "комичн" },
@@ -48,9 +45,6 @@ public static class GenreMapper
         ["военный"] = new() { "военн", "войн", "солдат", "фронт", "битв", "арми", "генерал", "танк", "подвиг", "честь", "долг" }
     };
 
-    /// <summary>
-    /// Извлекает прямые жанры из текста пользователя по ключевым словам
-    /// </summary>
     public static List<string> ExtractGenres(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
