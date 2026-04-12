@@ -1,0 +1,79 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using ContentRecommender.Core.Models
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<div class="auth-section">
+    @if (isAuthenticated)
+    {
+        <div class="user-info">
+            <span class="user-name">@userName</span>
+        </div>
+        <button class="nav-link-button" @onclick="Logout">
+            <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Выйти
+        </button>
+    }
+    else
+    {
+        <button class="nav-link-button" @onclick="GoToLogin">
+            <span class="bi bi-box-arrow-in-right" aria-hidden="true"></span> Войти
+        </button>
+        <button class="nav-link-button" @onclick="GoToRegister">
+            <span class="bi bi-person-plus" aria-hidden="true"></span> Регистрация
+        </button>
+    }
+</div>
+
+@code {
+    private bool isAuthenticated = false;
+    private string userName = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserState();
+
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadUserState();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadUserState()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        isAuthenticated = user.Identity?.IsAuthenticated ?? false;
+
+        if (isAuthenticated)
+        {
+            userName = user.Identity?.Name ?? "Пользователь";
+        }
+    }
+
+    private void GoToLogin()
+    {
+        Navigation.NavigateTo("/Account/Login", true);
+    }
+
+    private void GoToRegister()
+    {
+        Navigation.NavigateTo("/Account/Register", true);
+    }
+
+    private void Logout()
+    {
+        Navigation.NavigateTo("/Account/Logout", true);
+    }
+
+    public void Dispose()
+    {
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+    }
+}

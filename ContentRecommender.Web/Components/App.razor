@@ -1,0 +1,52 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.AspNetCore.Components.Authorization
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="bootstrap/bootstrap.min.css" />
+
+    <!-- Стили -->
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/home.css" />
+    <link rel="stylesheet" href="css/auth.css" />
+    <link rel="stylesheet" href="css/nav-auth.css" />
+    <link rel="stylesheet" href="css/content-cards.css" />
+    <link rel="stylesheet" href="css/search.css" />
+    <link rel="stylesheet" href="css/favorites.css" />
+    <link rel="stylesheet" href="css/content-detail.css" />
+
+    <!-- Стили приложения -->
+    <link rel="stylesheet" href="ContentRecommender.Web.styles.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+
+<body>
+    <CascadingAuthenticationState>
+        <Routes @rendermode="InteractiveServer" />
+    </CascadingAuthenticationState>
+
+    <script src="_framework/blazor.web.js"></script>
+    <script src="js/imageFallback.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if 
+            {
+                (window.initImageFallback) window.initImageFallback();
+            }
+            if
+            {
+                (window.observeImageFallback) window.observeImageFallback();
+            }
+        });
+    </script>
+</body>
+</html>

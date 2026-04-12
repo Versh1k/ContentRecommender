@@ -1,0 +1,275 @@
+﻿@page "/favorites"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using ContentRecommender.Core.Models
+@using ContentRecommender.Data.Repositories
+@using ContentRecommender.Web.Services
+@using ContentRecommender.Web.Components.Shared
+
+@attribute [Authorize]
+@inject IFavoritesRepository FavoritesRepository
+@inject IFavoritesService FavoritesService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<AppUser> UserManager
+@implements IDisposable
+
+<div class="favorites-page">
+    <div class="favorites-container">
+        <div class="favorites-header">
+            <a href="/" class="back-home">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+                <span>На главную</span>
+            </a>
+            <h1 class="favorites-title">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                </svg>
+                <span>Моё избранное</span>
+            </h1>
+            @if (favorites.Count > 0)
+            {
+                <span class="favorites-count">@favorites.Count</span>
+            }
+        </div>
+
+        <div class="favorites-filters">
+            <button class="filter-btn @(filterFormat == null ? "active" : "")" @onclick="() => SetFilter(null)">Все</button>
+            <button class="filter-btn @(filterFormat == ContentFormat.Movie ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Movie)">🎬 Фильмы</button>
+            <button class="filter-btn @(filterFormat == ContentFormat.Series ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Series)">📺 Сериалы</button>
+            <button class="filter-btn @(filterFormat == ContentFormat.Cartoon ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Cartoon)">🎨 Мультфильмы</button>
+            <button class="filter-btn @(filterFormat == ContentFormat.Book ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Book)">📚 Книги</button>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="spinner-large"></div>
+                <p>Загрузка избранного...</p>
+            </div>
+        }
+
+        @if (!isLoading && !filteredFavorites.Any())
+        {
+            <div class="empty-state">
+                <div class="empty-icon">📭</div>
+                <h3>Пока пусто</h3>
+                <p>Добавляйте контент в избранное во время поиска</p>
+                <a href="/search" class="btn-primary">Найти контент</a>
+            </div>
+        }
+
+        @if (!isLoading && filteredFavorites.Any())
+        {
+            <div class="cards-grid">
+                @foreach (var fav in filteredFavorites)
+                {
+                    var contentItem = ConvertToContentItem(fav);
+                    @if (contentItem != null)
+                    {
+                        <ContentCard Item="contentItem"
+                                     IsFavorite="true"
+                                     OnFavoriteChanged="RemoveFromFavoritesItem" />
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<FavoriteItem> favorites = new();
+    private List<FavoriteItem> filteredFavorites = new();
+    private bool isLoading = true;
+    private ContentFormat? filterFormat;
+    private string? _currentUserId;
+    private bool _isDisposed = false;
+    private bool _isLoadingInProgress = false;
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine(" Favorites.razor: OnInitializedAsync");
+        _currentUserId = await GetCurrentUserIdAsync();
+        Console.WriteLine($" UserId: {_currentUserId}");
+        
+        await LoadFavorites();
+        
+        FavoritesService.OnFavoritesChanged += OnFavoritesChangedHandler;
+    }
+
+    private async void OnFavoritesChangedHandler()
+    {
+        if (!_isDisposed && !_isLoadingInProgress)
+        {
+            Console.WriteLine(" FavoritesService.OnFavoritesChanged сработало");
+            await InvokeAsync(async () =>
+            {
+                await Task.Delay(300);
+                await LoadFavorites();
+            });
+        }
+    }
+
+    public void Dispose()
+    {
+        _isDisposed = true;
+        FavoritesService.OnFavoritesChanged -= OnFavoritesChangedHandler;
+    }
+
+    private async Task<string?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState?.User;
+
+        Console.WriteLine($" User authenticated: {user?.Identity?.IsAuthenticated}");
+
+        if (user?.Identity?.IsAuthenticated != true)
+            return null;
+
+        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(user.Identity.Name))
+        {
+            var appUser = await UserManager.FindByNameAsync(user.Identity.Name!);
+            userId = appUser?.Id;
+        }
+
+        return userId;
+    }
+
+    private async Task LoadFavorites()
+    {
+        if (_isLoadingInProgress)
+        {
+            Console.WriteLine(" Загрузка уже в процессе, пропускаем");
+            return;
+        }
+
+        _isLoadingInProgress = true;
+        
+        try
+        {
+            isLoading = true;
+            StateHasChanged();
+
+            if (!string.IsNullOrEmpty(_currentUserId))
+            {
+                await Task.Delay(100);
+                
+                var loadedFavorites = await FavoritesRepository.GetUserFavoritesAsync(_currentUserId, filterFormat);
+                favorites = loadedFavorites ?? new List<FavoriteItem>();
+                Console.WriteLine($" Загружено {favorites.Count} элементов избранного");
+                ApplyFilter();
+            }
+            else
+            {
+                Console.WriteLine(" UserId не найден");
+                favorites = new List<FavoriteItem>();
+                filteredFavorites = new List<FavoriteItem>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($" Ошибка: {ex.Message}");
+            favorites = new List<FavoriteItem>();
+            filteredFavorites = new List<FavoriteItem>();
+        }
+        finally
+        {
+            isLoading = false;
+            _isLoadingInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SetFilter(ContentFormat? format)
+    {
+        filterFormat = format;
+        ApplyFilter();
+        StateHasChanged();
+    }
+
+    private void ApplyFilter()
+    {
+        filteredFavorites = filterFormat.HasValue
+            ? favorites.Where(f => f.Format == filterFormat.Value).ToList()
+            : favorites;
+        
+        Console.WriteLine($" filteredFavorites: {filteredFavorites.Count} (filter: {filterFormat?.ToString() ?? "null"})");
+    }
+
+    private ContentItem? ConvertToContentItem(FavoriteItem fav)
+    {
+        if (fav == null) return null;
+
+        try
+        {
+            var genres = !string.IsNullOrEmpty(fav.GenresJson)
+                ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(fav.GenresJson)
+                : new List<string>();
+
+            if (fav.Format == ContentFormat.Book)
+            {
+                return new Book
+                {
+                    ExternalId = fav.ExternalId,
+                    Source = fav.Source,
+                    Format = fav.Format,
+                    Title = fav.Title,
+                    CoverUrl = fav.CoverUrl,
+                    Genres = genres ?? new List<string>(),
+                    MoodTags = new List<MoodType>(),
+                } as ContentItem;
+            }
+            else
+            {
+                return new Movie
+                {
+                    ExternalId = fav.ExternalId,
+                    Source = fav.Source,
+                    Format = fav.Format,
+                    Title = fav.Title,
+                    CoverUrl = fav.CoverUrl,
+                    Genres = genres ?? new List<string>(),
+                    MoodTags = new List<MoodType>(),
+                } as ContentItem;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($" Ошибка конвертации: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task RemoveFromFavoritesItem(ContentItem item)
+    {
+        try
+        {
+            Console.WriteLine($" RemoveFromFavoritesItem: {item.Title}");
+
+            if (!string.IsNullOrEmpty(_currentUserId) && !string.IsNullOrEmpty(item.ExternalId))
+            {
+                await Task.Delay(200);
+                
+                var removed = await FavoritesRepository.RemoveFromFavoritesAsync(
+                    _currentUserId,
+                    item.ExternalId,
+                    item.Source);
+
+                Console.WriteLine($" Удалено: {removed}");
+
+                if (removed)
+                {
+                    await Task.Delay(300);
+                    await LoadFavorites();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($" Ошибка удаления: {ex.Message}");
+        }
+    }
+}

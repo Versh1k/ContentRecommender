@@ -1,0 +1,341 @@
+﻿@page "/content/{Source}/{Id}"
+@using ContentRecommender.Core.Models
+@using ContentRecommender.Web.Services
+
+@inject IContentDetailService DetailService
+@inject IFavoritesService FavoritesService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+@if (isLoading)
+{
+    <div class="loading-container">
+        <div class="spinner-large"></div>
+        <p>Загрузка...</p>
+    </div>
+}
+else if (content == null)
+{
+    <div class="error-container">
+        <h2>😕 Контент не найден</h2>
+        <p>Запрашиваемая страница не существует или была удалена</p>
+        <a href="/" class="btn-primary">На главную</a>
+    </div>
+}
+else
+{
+    <div class="content-detail-page">
+        <div class="detail-header">
+            <a href="javascript:history.back()" class="back-button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+                <span>Назад</span>
+            </a>
+
+            <div class="detail-actions">
+                <button class="action-btn @(content.IsFavorite ? "active" : "")"
+                        @onclick="ToggleFavorite"
+                        title="@(content.IsFavorite ? "Удалить из избранного" : "В избранное")">
+                    @(content.IsFavorite ? "❤️" : "🤍")
+                </button>
+                <button class="action-btn share-btn"
+                        @onclick="ShareContent"
+                        title="Копировать ссылку">
+                    🔗
+                </button>
+            </div>
+        </div>
+
+        <div class="detail-content">
+            <div class="detail-poster">
+                @if (!string.IsNullOrEmpty(content.CoverUrl))
+                {
+                    <img src="@content.CoverUrl" alt="@content.Title" />
+                }
+                else
+                {
+                    <div class="no-poster">
+                        <span>@GetFormatIcon(content.Format)</span>
+                    </div>
+                }
+            </div>
+
+            <div class="detail-info">
+                <h1 class="detail-title">@content.Title</h1>
+
+                <div class="detail-meta">
+                    @if (content.Rating.HasValue)
+                    {
+                        <span class="rating">⭐ @content.Rating.Value.ToString("F1")</span>
+                    }
+                    @if (content.Year.HasValue)
+                    {
+                        <span>• @content.Year</span>
+                    }
+                    @if (content.DurationMinutes.HasValue)
+                    {
+                        <span>• @content.DurationMinutes мин</span>
+                    }
+                    @if (content.Pages.HasValue)
+                    {
+                        <span>• @content.Pages стр</span>
+                    }
+                </div>
+
+                @if (content.Genres?.Any() == true)
+                {
+                    <div class="detail-genres">
+                        @foreach (var genre in content.Genres.Take(5))
+                        {
+                            <span class="genre-tag">@genre</span>
+                        }
+                    </div>
+                }
+
+                <div class="detail-description">
+                    <p>@(content.Description ?? "Описание отсутствует")</p>
+                </div>
+
+                @if (!string.IsNullOrEmpty(content.Director))
+                {
+                    <div class="detail-crew">
+                        <strong>Режиссёр:</strong> @content.Director
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(content.Author))
+                {
+                    <div class="detail-crew">
+                        <strong>Автор:</strong> @content.Author
+                    </div>
+                }
+
+                <div class="detail-buttons">
+                    @if (content.Format != ContentFormat.Book && content.Trailers?.Any() == true)
+                    {
+                        <button class="btn-trailer" @onclick="ShowTrailerModal">
+                            ▶️ Смотреть трейлер
+                        </button>
+                    }
+
+                    <a href="@content.ExternalUrl" target="_blank" class="btn-external">
+                        @GetExternalButtonText(content.Source)
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        @if (content.SimilarItems?.Any() == true)
+        {
+            <div class="similar-section">
+                <h2>🎬 Похожие</h2>
+                <div class="similar-grid">
+                    @foreach (var similar in content.SimilarItems)
+                    {
+                        <div class="similar-card" @onclick="() => NavigateToContent(similar.Source, similar.ExternalId)">
+                            @if (!string.IsNullOrEmpty(similar.CoverUrl))
+                            {
+                                <img src="@similar.CoverUrl" alt="@similar.Title" />
+                            }
+                            else
+                            {
+                                <div class="no-poster-small">
+                                    <span>@GetFormatIcon(similar.Format)</span>
+                                </div>
+                            }
+                            <div class="similar-info">
+                                <h4>@similar.Title</h4>
+                                @if (similar.Rating.HasValue)
+                                {
+                                    <span class="similar-rating">⭐ @similar.Rating.Value.ToString("F1")</span>
+                                }
+                                @if (similar.Year.HasValue)
+                                {
+                                    <span class="similar-year">@similar.Year</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (showTrailerModal && content?.Trailers?.Any() == true)
+        {
+            <div class="modal-overlay" @onclick="CloseTrailerModal">
+                <div class="modal-content" @onclick:stopPropagation="true">
+                    <div class="modal-header">
+                        <h3>🎬 Трейлер</h3>
+                        <button class="modal-close" @onclick="CloseTrailerModal">✕</button>
+                    </div>
+
+                    <div class="modal-body">
+                        @if (!string.IsNullOrEmpty(currentTrailer?.YouTubeId))
+                        {
+                            <div class="video-container">
+                                <iframe src="https://www.youtube.com/embed/@currentTrailer.YouTubeId?autoplay=1"
+                                        frameborder="0"
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                        allowfullscreen>
+                                </iframe>
+                            </div>
+                            <p class="trailer-title">@currentTrailer.Title</p>
+                        }
+
+                        @if (content.Trailers.Count > 1)
+                        {
+                            <div class="trailer-selector">
+                                @foreach (var trailer in content.Trailers)
+                                {
+                                    <button class="trailer-btn @(currentTrailer == trailer ? "active" : "")"
+                                            @onclick="() => SelectTrailer(trailer)">
+                                        🎞️ @trailer.Title
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string Source { get; set; } = "";
+    [Parameter] public string Id { get; set; } = "";
+
+    private ContentDetailDto? content;
+    private bool isLoading = true;
+    private bool showTrailerModal = false;
+    private TrailerDto? currentTrailer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadContent();
+    }
+
+    private async Task LoadContent()
+    {
+        try
+        {
+            isLoading = true;
+            content = await DetailService.GetContentDetailsAsync(Source, Id);
+
+            if (content != null)
+            {
+                Console.WriteLine($"🎬 Трейлеров найдено: {content.Trailers?.Count ?? 0}");
+                content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, 6);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Ошибка загрузки: {ex.Message}");
+            content = null;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task ToggleFavorite()
+    {
+        if (content == null) return;
+
+        ContentItem item = content.Format switch
+        {
+            ContentFormat.Book => new Book
+            {
+                ExternalId = content.ExternalId,
+                Source = content.Source,
+                Format = content.Format,
+                Title = content.Title,
+                CoverUrl = content.CoverUrl,
+                Author = content.Author,
+                Pages = content.Pages,
+                Year = content.Year,
+                Rating = content.Rating,
+                Genres = content.Genres,
+                Description = content.Description
+            },
+
+            ContentFormat.Movie or ContentFormat.Series or ContentFormat.Cartoon => new Movie
+            {
+                ExternalId = content.ExternalId,
+                Source = content.Source,
+                Format = content.Format,
+                Title = content.Title,
+                CoverUrl = content.CoverUrl,
+                Director = content.Director,
+                DurationMinutes = content.DurationMinutes,
+                Year = content.Year,
+                Rating = content.Rating,
+                Genres = content.Genres,
+                Description = content.Description
+            },
+
+            _ => new Movie
+            {
+                ExternalId = content.ExternalId,
+                Source = content.Source,
+                Format = content.Format,
+                Title = content.Title,
+                CoverUrl = content.CoverUrl
+            }
+        };
+
+        var success = await FavoritesService.ToggleFavoriteAsync(item);
+
+        if (success)
+        {
+            content.IsFavorite = !content.IsFavorite;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShareContent()
+    {
+        var url = Navigation.Uri;
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", url);
+    }
+
+    private void ShowTrailerModal()
+    {
+        currentTrailer = content?.Trailers?.FirstOrDefault();
+        showTrailerModal = true;
+    }
+
+    private void CloseTrailerModal()
+    {
+        showTrailerModal = false;
+        currentTrailer = null;
+    }
+
+    private void SelectTrailer(TrailerDto trailer)
+    {
+        currentTrailer = trailer;
+    }
+
+    private void NavigateToContent(string source, string externalId)
+    {
+        Navigation.NavigateTo($"/content/{source.ToLower()}/{externalId}");
+    }
+
+    private string GetFormatIcon(ContentFormat format) => format switch
+    {
+        ContentFormat.Movie => "🎬",
+        ContentFormat.Series => "📺",
+        ContentFormat.Cartoon => "🎨",
+        ContentFormat.Book => "📚",
+        _ => "🎬"
+    };
+
+    private string GetExternalButtonText(string source) => source.ToLower() switch
+    {
+        "kinopoisk" => " Открыть на Кинопоиске",
+        "googlebooks" => " Читать на Google Books",
+        _ => "Открыть"
+    };
+}

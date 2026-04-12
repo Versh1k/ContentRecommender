@@ -1,0 +1,548 @@
+﻿@page "/search"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using ContentRecommender.Core.Models
+@using ContentRecommender.Core.Services
+@using ContentRecommender.Web.ML.Services
+@using ContentRecommender.Web.Services
+@using ContentRecommender.Web.Components.Shared
+@using ContentRecommender.Data.Repositories
+
+@attribute [Authorize]
+
+@inject ISearchStateService SearchStateService
+@inject IFavoritesService FavoritesService
+@inject IMoodAnalysisService MoodAnalysisService
+@inject KinopoiskService KinopoiskService
+@inject GoogleBooksService GoogleBooksService
+@inject NavigationManager Navigation
+@inject IFavoritesRepository FavoritesRepository
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<AppUser> UserManager
+
+<div class="search-page @(currentSearchMode == SearchMode.ByKeywords ? "mode-keywords" : "")">
+    <div class="search-container">
+        <div class="search-header">
+            <a href="/" class="back-home">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+                <span>На главную</span>
+            </a>
+        </div>
+
+        <h1 class="search-title">
+            @(currentSearchMode == SearchMode.ByMood ? "Поиск по настроению" : "Поиск по ключевым словам")
+        </h1>
+
+        <div class="type-selector">
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.All ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.All)">Всё</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.Movies ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.Movies)"> Фильмы</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.TvSeries ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.TvSeries)"> Сериалы</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.Cartoons ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.Cartoons)"> Мультфильмы</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.AllBooks ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.AllBooks)"> Книги</button>
+        </div>
+
+        <div class="search-box-wrapper">
+            <button class="mode-toggle-btn" @onclick="ToggleSearchMode" title="Переключить режим поиска">
+                @if (currentSearchMode == SearchMode.ByMood)
+                {
+                    <svg viewBox="0 0 24  24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <span>По настроению</span>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="M21 21l-4.35-4.35" />
+                    </svg>
+                    <span>По ключевым словам</span>
+                }
+            </button>
+
+            <div class="search-box">
+                <textarea @bind="currentSearchQuery" @bind:event="oninput" class="search-input"
+                          placeholder="@(currentSearchMode == SearchMode.ByMood ? "Опишите своё настроение..." : "Название, актёр, жанр или описание...")"
+                          rows="3" maxlength="500"></textarea>
+                <button class="search-btn" @onclick="PerformSearch" disabled="@isSearching">
+                    @if (isSearching)
+                    {
+                        <span class="spinner"></span>
+                        <span>Ищу...</span>
+                    }
+                    else
+                    {
+                        <span>Найти</span>
+                    }
+                </button>
+            </div>
+        </div>
+
+        @if (currentSearchMode == SearchMode.ByKeywords)
+        {
+            <div class="genres-dropdown">
+                <button class="genres-dropdown-btn @(isGenresDropdownOpen ? "active" : "")" @onclick="ToggleGenresDropdown">
+                    <span>
+                        @if (selectedManualGenres.Any())
+                        {
+                            <text>🎬 Выбрано: @string.Join(", ", selectedManualGenres) <small>(@selectedManualGenres.Count/3)</small></text>
+                        }
+                        else
+                        {
+                            <text>🎬 Выбрать жанры (макс. 3)</text>
+                        }
+                    </span>
+                    <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                </button>
+
+                @if (isGenresDropdownOpen)
+                {
+                    <div class="genres-dropdown-content">
+                        <div class="genres-dropdown-header">
+                            <span>Выберите жанры</span>
+                            <small>@selectedManualGenres.Count / @MaxGenres</small>
+                        </div>
+                        <div class="genres-list-dropdown">
+                            @foreach (var genre in AvailableGenres)
+                            {
+                                var isSelected = selectedManualGenres.Contains(genre);
+                                <span class="genre-chip @(isSelected ? "selected" : "")"
+                                      @onclick="() => ToggleGenre(genre)">
+                                    @genre @(isSelected ? "✓" : "")
+                                </span>
+                            }
+                        </div>
+                        @if (selectedManualGenres.Any())
+                        {
+                            <button class="clear-genres-btn" @onclick="ClearSelectedGenres">
+                                ✕ Очистить выбор
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="error-message">@errorMessage</div>
+        }
+
+        @if (recommendedGenres.Any())
+        {
+            <div class="genres-section">
+                <span class="section-label">
+                    @if (currentSearchMode == SearchMode.ByKeywords)
+                    {
+                        <text>Параметры поиска</text>
+                    }
+                    else if (detectedMood != null)
+                    {
+                        <text>Рекомендуемые жанры</text>
+                    }
+                    else
+                    {
+                        <text>Найденные жанры</text>
+                    }
+                </span>
+                <div class="genres-list">
+                    @foreach (var genre in recommendedGenres)
+                    {
+                        @if (!genre.StartsWith("keyword:"))
+                        {
+                            <span class="genre-pill">@genre</span>
+                        }
+                    }
+                </div>
+            </div>
+        }
+
+        @if (results != null && results.Any())
+        {
+            <div class="results-section">
+                <h2 class="results-title">Подборка для вас</h2>
+                <div class="cards-grid">
+                    @foreach (var item in results)
+                    {
+                        <ContentCard Item="item"
+                                     IsFavorite="@(IsItemFavorite(item.ExternalId, item.Source))"
+                                     OnFavoriteChanged="ToggleFavorite" />
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private enum SearchMode { ByMood, ByKeywords }
+
+    private SearchMode currentSearchMode = SearchMode.ByMood;
+    private string userInput = "";
+    private string keywordSearchQuery = "";
+
+    private string currentSearchQuery
+    {
+        get => currentSearchMode == SearchMode.ByMood ? userInput : keywordSearchQuery;
+        set { if (currentSearchMode == SearchMode.ByMood) userInput = value; else keywordSearchQuery = value; }
+    }
+
+    private bool isSearching = false;
+    private string? errorMessage;
+    private MoodType? detectedMood;
+    private List<string> recommendedGenres = new();
+    private List<ContentItem>? results;
+    private SearchCriteria.SearchContentType selectedContentType = SearchCriteria.SearchContentType.All;
+
+    private bool isGenresDropdownOpen = false;
+    private List<string> selectedManualGenres = new();
+    private const int MaxGenres = 3;
+
+    private static readonly List<string> AvailableGenres = new()
+    {
+        "боевик", "приключения", "анимация", "комедия", "криминал",
+        "документальный", "драма", "семейный", "фэнтези", "исторический",
+        "ужасы", "музыка", "мистика", "романтика", "фантастика",
+        "триллер", "военный", "вестерн", "детектив", "биография"
+    };
+
+    private static readonly Dictionary<MoodType, List<string>> MoodBaseGenres = new()
+    {
+        { MoodType.Romantic, new() { "мелодрама", "романтика" } },
+        { MoodType.Mysterious, new() { "детектив", "триллер" } },
+        { MoodType.Sad, new() { "драма", "биография" } },
+        { MoodType.Funny, new() { "комедия", "семейный" } },
+        { MoodType.Crime, new() { "криминал", "детектив" } },
+        { MoodType.Military, new() { "военный", "исторический" } },
+        { MoodType.Everyday, new() { "документальный", "семейный" } },
+        { MoodType.Tense, new() { "триллер", "боевик" } },
+        { MoodType.Horror, new() { "ужасы", "мистика" } },
+        { MoodType.Inspiring, new() { "биография", "спортивный" } },
+        { MoodType.Epic, new() { "фэнтези", "приключения" } },
+        { MoodType.Adventure, new() { "приключения", "боевик" } }
+    };
+
+    private HashSet<string> _favoriteKeys = new();
+    private string? _currentUserId;
+    private bool _isDisposed = false;
+    private bool _isLoadingInProgress = false;
+    private bool _isInitialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine("Search.razor: OnInitializedAsync");
+        _currentUserId = await GetCurrentUserIdAsync();
+
+        if (!_isLoadingInProgress)
+        {
+            _isLoadingInProgress = true;
+            _favoriteKeys = await FavoritesService.GetUserFavoriteKeysAsync();
+            _isLoadingInProgress = false;
+        }
+
+        FavoritesService.OnFavoritesChanged += OnFavoritesChangedHandler;
+
+        try
+        {
+            var savedState = await SearchStateService.GetSearchStateAsync();
+            if (savedState != null && savedState.SavedResults != null && savedState.SavedResults.Any())
+            {
+                Console.WriteLine($"Восстановление поиска: {savedState.Query}");
+
+                if (!string.IsNullOrEmpty(savedState.Mood))
+                {
+                    currentSearchMode = SearchMode.ByMood;
+                    userInput = savedState.Query;
+                    detectedMood = Enum.TryParse<MoodType>(savedState.Mood, out var mood) ? mood : (MoodType?)null;
+                }
+                else
+                {
+                    currentSearchMode = SearchMode.ByKeywords;
+                    keywordSearchQuery = savedState.Query;
+                    detectedMood = null;
+                }
+
+                selectedContentType = Enum.Parse<SearchCriteria.SearchContentType>(savedState.ContentType);
+                if (savedState.Genres.Any())
+                    recommendedGenres = savedState.Genres;
+
+                results = savedState.SavedResults.Select(r =>
+                {
+                    if (r.Format == ContentFormat.Book)
+                        return new Book { ExternalId = r.ExternalId, Source = r.Source, Format = r.Format, Title = r.Title, CoverUrl = r.CoverUrl, Year = r.Year, Rating = r.Rating } as ContentItem;
+                    else
+                        return new Movie { ExternalId = r.ExternalId, Source = r.Source, Format = r.Format, Title = r.Title, CoverUrl = r.CoverUrl, Year = r.Year, Rating = r.Rating } as ContentItem;
+                }).ToList();
+
+                Console.WriteLine($"Восстановлено {results.Count} результатов");
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка восстановления поиска: {ex.Message}");
+        }
+
+        _isInitialized = true;
+    }
+
+    private async void OnFavoritesChangedHandler()
+    {
+        if (!_isDisposed && !_isLoadingInProgress)
+        {
+            await InvokeAsync(async () =>
+            {
+                await Task.Delay(300);
+                _isLoadingInProgress = true;
+                _favoriteKeys = await FavoritesService.GetUserFavoriteKeysAsync();
+                _isLoadingInProgress = false;
+                StateHasChanged();
+            });
+        }
+    }
+
+    public void Dispose()
+    {
+        _isDisposed = true;
+        FavoritesService.OnFavoritesChanged -= OnFavoritesChangedHandler;
+    }
+
+    private async Task<string?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState?.User;
+        if (user?.Identity?.IsAuthenticated != true) return null;
+
+        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(user.Identity.Name))
+        {
+            var appUser = await UserManager.FindByEmailAsync(user.Identity.Name);
+            userId = appUser?.Id;
+        }
+        if (string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(user.Identity.Name))
+        {
+            var appUser = await UserManager.FindByNameAsync(user.Identity.Name);
+            userId = appUser?.Id;
+        }
+        return userId;
+    }
+
+    private bool IsItemFavorite(string? externalId, string? source) =>
+        FavoritesService.IsFavorite(externalId, source, _favoriteKeys);
+
+    private async Task ToggleFavorite(ContentItem item)
+    {
+        Console.WriteLine($"Search.razor ToggleFavorite: {item.Title}");
+        var success = await FavoritesService.ToggleFavoriteAsync(item);
+        Console.WriteLine($"ToggleFavorite результат: {success}");
+    }
+
+    private void SetType(SearchCriteria.SearchContentType type)
+    {
+        selectedContentType = type;
+        if (!string.IsNullOrWhiteSpace(currentSearchQuery)) _ = PerformSearch();
+    }
+
+    private void ToggleSearchMode()
+    {
+        currentSearchMode = currentSearchMode == SearchMode.ByMood
+            ? SearchMode.ByKeywords
+            : SearchMode.ByMood;
+
+        isGenresDropdownOpen = false;
+
+        if (currentSearchMode == SearchMode.ByMood)
+            selectedManualGenres.Clear();
+
+        StateHasChanged();
+    }
+
+    private void ToggleGenresDropdown()
+    {
+        isGenresDropdownOpen = !isGenresDropdownOpen;
+    }
+
+    private void ToggleGenre(string genre)
+    {
+        if (selectedManualGenres.Contains(genre))
+            selectedManualGenres.Remove(genre);
+        else if (selectedManualGenres.Count < MaxGenres)
+            selectedManualGenres.Add(genre);
+
+        StateHasChanged();
+    }
+
+    private void ClearSelectedGenres()
+    {
+        selectedManualGenres.Clear();
+        StateHasChanged();
+    }
+
+    private async Task PerformSearch()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(currentSearchQuery) && !selectedManualGenres.Any())
+            {
+                errorMessage = currentSearchMode == SearchMode.ByMood
+                    ? "Опишите своё настроение или что хотите найти"
+                    : "Введите ключевые слова или выберите жанры";
+                return;
+            }
+
+            isSearching = true;
+            errorMessage = null;
+            detectedMood = null;
+            results = null;
+            recommendedGenres.Clear();
+            isGenresDropdownOpen = false;
+            StateHasChanged();
+
+            var searchSeed = Guid.NewGuid();
+            var finalGenres = new List<string>();
+
+            if (currentSearchMode == SearchMode.ByMood)
+            {
+                var directGenres = GenreMapper.ExtractGenres(userInput);
+                Console.WriteLine($"Прямые жанры: {(directGenres.Any() ? string.Join(", ", directGenres) : "не найдены")}");
+
+                var (mlMood, mlConfidence) = MoodAnalysisService.AnalyzeMoodWithConfidence(userInput);
+                Console.WriteLine($"ML модель: Настроение={mlMood}, Уверенность={mlConfidence:F2}");
+
+                detectedMood = mlMood;
+
+                if (detectedMood.HasValue && MoodBaseGenres.ContainsKey(detectedMood.Value))
+                {
+                    var baseGenres = MoodBaseGenres[detectedMood.Value];
+                    Console.WriteLine($"Настроение: {detectedMood.Value} -> базовые жанры: {string.Join(", ", baseGenres)}");
+                    finalGenres.AddRange(baseGenres);
+                }
+
+                if (directGenres.Any())
+                {
+                    Console.WriteLine($"Прямые жанры из запроса: {string.Join(", ", directGenres)}");
+                    foreach (var genre in directGenres)
+                        if (!finalGenres.Contains(genre)) finalGenres.Add(genre);
+                }
+            }
+            else
+            {
+                if (selectedManualGenres.Any())
+                    finalGenres.AddRange(selectedManualGenres);
+
+                if (!string.IsNullOrWhiteSpace(keywordSearchQuery))
+                    finalGenres.Add($"keyword:{keywordSearchQuery.Trim()}");
+            }
+
+            recommendedGenres = finalGenres.Distinct().Take(MaxGenres).ToList();
+
+            Console.WriteLine($"Итоговое настроение: {detectedMood}");
+            Console.WriteLine($"Жанры для поиска ({recommendedGenres.Count}): {string.Join(", ", recommendedGenres)}");
+            Console.WriteLine($"=== КОНЕЦ ПОИСКА ===\n");
+
+            if (!recommendedGenres.Any())
+            {
+                Console.WriteLine("Жанры не определены, поиск отменён");
+                errorMessage = "Не удалось определить подходящие жанры. Попробуйте другой запрос.";
+                return;
+            }
+
+            results = new List<ContentItem>();
+
+            if (selectedContentType == SearchCriteria.SearchContentType.All ||
+                selectedContentType == SearchCriteria.SearchContentType.Movies ||
+                selectedContentType == SearchCriteria.SearchContentType.TvSeries ||
+                selectedContentType == SearchCriteria.SearchContentType.Cartoons)
+            {
+                var targetType = selectedContentType switch
+                {
+                    SearchCriteria.SearchContentType.Movies => ContentTypeCategory.FeatureFilm,
+                    SearchCriteria.SearchContentType.TvSeries => ContentTypeCategory.TvSeries,
+                    SearchCriteria.SearchContentType.Cartoons => ContentTypeCategory.Cartoon,
+                    _ => ContentTypeCategory.FeatureFilm
+                };
+                var movies = await KinopoiskService.SearchWithFallback(recommendedGenres, targetType, 12, searchSeed);
+                results.AddRange(movies);
+            }
+
+            if (selectedContentType == SearchCriteria.SearchContentType.All ||
+                selectedContentType == SearchCriteria.SearchContentType.AllBooks)
+            {
+                var books = await GoogleBooksService.SearchWithFallback(recommendedGenres, detectedMood, 8, searchSeed);
+                results.AddRange(books);
+            }
+
+            results = results.OrderByDescending(x => x.Rating ?? 0).Take(20).ToList();
+
+            if (!results.Any())
+                errorMessage = "Ничего не найдено. Попробуйте другие слова.";
+
+            if (results.Any() && !string.IsNullOrEmpty(currentSearchQuery))
+            {
+                try
+                {
+                    await SearchStateService.ClearSearchStateAsync();
+                    await SearchStateService.SaveSearchStateAsync(
+                        currentSearchQuery,
+                        recommendedGenres,
+                        detectedMood,
+                        selectedContentType,
+                        results.ToList());
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SearchState] Ошибка сохранения (возможно, пререндеринг): {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка: {ex.Message}";
+            Console.WriteLine($"Ошибка поиска: {ex.Message}");
+        }
+        finally
+        {
+            isSearching = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetMoodClass(MoodType mood) => mood switch
+    {
+        MoodType.Romantic => "mood-romantic",
+        MoodType.Mysterious => "mood-mysterious",
+        MoodType.Sad => "mood-sad",
+        MoodType.Funny => "mood-funny",
+        MoodType.Crime => "mood-crime",
+        MoodType.Military => "mood-military",
+        MoodType.Everyday => "mood-everyday",
+        MoodType.Tense => "mood-tense",
+        MoodType.Horror => "mood-horror",
+        MoodType.Inspiring => "mood-inspiring",
+        MoodType.Epic => "mood-epic",
+        MoodType.Adventure => "mood-adventure",
+        _ => "mood-everyday"
+    };
+
+    private string GetMoodDisplayName(MoodType mood) => mood switch
+    {
+        MoodType.Romantic => "Романтичное",
+        MoodType.Mysterious => "Загадочное",
+        MoodType.Sad => "Грустное",
+        MoodType.Funny => "Весёлое",
+        MoodType.Crime => "Криминальное",
+        MoodType.Military => "Военное",
+        MoodType.Everyday => "Повседневное",
+        MoodType.Tense => "Напряжённое",
+        MoodType.Horror => "Страшное",
+        MoodType.Inspiring => "Вдохновляющее",
+        MoodType.Epic => "Эпичное",
+        MoodType.Adventure => "Приключенческое",
+        _ => "Неопределено"
+    };
+}

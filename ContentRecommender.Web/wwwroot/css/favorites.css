@@ -1,0 +1,166 @@
+﻿/* ===== FAVORITES PAGE ===== */
+.favorites-page {
+    min-height: 100vh;
+    background: var(--bg-primary, #0f0f1a);
+    padding: 2rem;
+    display: block !important;
+}
+
+.favorites-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+/* ===== ШАПКА ===== */
+.favorites-header {
+    display: flex !important;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.back-home {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50px;
+    color: white;
+    text-decoration: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+    .back-home:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.2);
+        transform: translateX(-3px);
+    }
+
+.favorites-title {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+    margin: 0;
+}
+
+.favorites-count {
+    background: linear-gradient(135deg, #4cc9f0, #4361ee);
+    color: white;
+    padding: 0.4rem 1rem;
+    border-radius: 50px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: inline-block !important;
+}
+.favorites-grid {
+    display: grid; /* Обязательно! */
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); /* Или flex */
+    gap: 20px;
+}
+/* ===== ФИЛЬТРЫ ===== */
+.favorites-filters {
+    display: flex !important;
+    gap: 0.75rem;
+    margin-bottom: 2.5rem;
+    flex-wrap: wrap;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.filter-btn {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.4rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50px;
+    color: #9ca3af;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+    .filter-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.2);
+        color: white;
+    }
+
+    .filter-btn.active {
+        background: linear-gradient(135deg, #4cc9f0, #4361ee);
+        border-color: transparent;
+        color: white;
+        box-shadow: 0 4px 15px rgba(76, 201, 240, 0.4);
+    }
+
+/* ===== СОСТОЯНИЯ ===== */
+.loading-state, .empty-state {
+    text-align: center;
+    padding: 5rem 2rem;
+    background: #1a1a1a;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    display: block !important;
+}
+
+    .loading-state p, .empty-state p {
+        color: #9ca3af;
+        margin: 1rem 0 1.5rem;
+        font-size: 1.1rem;
+        display: block !important;
+    }
+
+.empty-icon {
+    font-size: 5rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+    display: block !important;
+}
+
+.empty-state h3 {
+    color: white;
+    margin-bottom: 0.5rem;
+    font-size: 1.5rem;
+    display: block !important;
+}
+
+/* ===== АДАПТИВНОСТЬ ===== */
+@media (max-width: 768px) {
+    .favorites-page {
+        padding: 1rem;
+    }
+
+    .favorites-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .favorites-title {
+        font-size: 1.5rem;
+    }
+
+    .favorites-filters {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .filter-btn {
+        flex: 1 1 auto;
+        min-width: calc(50% - 0.5rem);
+    }
+}
