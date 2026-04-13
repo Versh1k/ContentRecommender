@@ -388,43 +388,51 @@
             Console.WriteLine($"Пользователь ввёл: {currentSearchQuery}");
 
             var searchSeed = Guid.NewGuid();
+            var finalGenres = new List<string>();
 
-            // ML предсказание
-            var (mlMood, mlConfidence, mlScores) = MoodAnalysisService.AnalyzeMoodFull(currentSearchQuery);
-            Console.WriteLine($"ML модель: Настроение={mlMood}, Уверенность={mlConfidence:F2}");
-
-            // Жанры от ML
-            var mlGenres = GenreMapper.GetGenresFromMoodScores(mlMood, mlScores, threshold: 0.05f);
-            Console.WriteLine($"ML жанры: {string.Join(", ", mlGenres)}");
-
-            // Короткий запрос (1-3 слова) – добавляем жанры по ключевым словам
-            var keywordGenres = new List<string>();
+            // Определяем количество слов
             var wordCount = currentSearchQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+
+            // Для коротких запросов (1-3 слова) сначала пробуем извлечь жанры по ключевым словам
             if (wordCount <= 3)
             {
-                keywordGenres = GenreMapper.ExtractGenresByKeywords(currentSearchQuery);
+                var keywordGenres = GenreMapper.ExtractGenresByKeywords(currentSearchQuery);
                 if (keywordGenres.Any())
-                    Console.WriteLine($"Ключевые слова → жанры: {string.Join(", ", keywordGenres)}");
+                {
+                    // Ключевые слова дали результат — используем только их, ML не трогаем
+                    finalGenres = keywordGenres;
+                    Console.WriteLine($"Короткий запрос → ключевые слова дали жанры: {string.Join(", ", finalGenres)}");
+                }
+                else
+                {
+                    // Ключевые слова ничего не дали — используем ML
+                    Console.WriteLine($"Короткий запрос, но ключевые слова не дали жанров → используем ML");
+                    var (mlMood, mlConfidence, mlScores) = MoodAnalysisService.AnalyzeMoodFull(currentSearchQuery);
+                    finalGenres = GenreMapper.GetGenresFromMoodScores(mlMood, mlScores, threshold: 0.05f);
+                    detectedMood = mlMood;
+                    Console.WriteLine($"ML модель: Настроение={mlMood}, Уверенность={mlConfidence:F2}");
+                    Console.WriteLine($"ML жанры: {string.Join(", ", finalGenres)}");
+                }
             }
-
-            // Объединение жанров
-            var finalGenres = mlGenres.ToList();
-            if (keywordGenres.Any())
+            else
             {
-                finalGenres.AddRange(keywordGenres);
-                finalGenres = finalGenres.Distinct().ToList();
-                Console.WriteLine($"Объединённые жанры: {string.Join(", ", finalGenres)}");
+                // Длинный запрос (4+ слов) — только ML
+                var (mlMood, mlConfidence, mlScores) = MoodAnalysisService.AnalyzeMoodFull(currentSearchQuery);
+                finalGenres = GenreMapper.GetGenresFromMoodScores(mlMood, mlScores, threshold: 0.05f);
+                detectedMood = mlMood;
+                Console.WriteLine($"Длинный запрос → только ML: Настроение={mlMood}, Уверенность={mlConfidence:F2}");
+                Console.WriteLine($"ML жанры: {string.Join(", ", finalGenres)}");
             }
 
-            // Fallback
+            // Если после всех попыток жанры не найдены — fallback
             if (!finalGenres.Any())
             {
-                finalGenres = GenreMapper.MoodBaseGenres.GetValueOrDefault(mlMood, new() { "драма", "приключения" });
-                Console.WriteLine($"Fallback жанры: {string.Join(", ", finalGenres)}");
+                // Попробуем базовые жанры по умолчанию
+                finalGenres = new List<string> { "драма", "приключения" };
+                Console.WriteLine($"Жанры не определены, используем fallback: {string.Join(", ", finalGenres)}");
             }
 
             recommendedGenres = finalGenres.Distinct().ToList();
-            detectedMood = mlMood;
 
             // Поиск фильмов
             results = new List<ContentItem>();
@@ -448,7 +456,11 @@
             if (selectedContentType == SearchCriteria.SearchContentType.All ||
                 selectedContentType == SearchCriteria.SearchContentType.AllBooks)
             {
-                var books = await GoogleBooksService.SearchBooksByKeywordsWithFallbackAsync(recommendedGenres, selectedContentType, 10);
+                var books = await GoogleBooksService.SearchBooksByKeywordsWithFallbackAsync(
+                    recommendedGenres,
+                    selectedContentType,
+                    10
+                );
                 results.AddRange(books);
             }
 
@@ -459,8 +471,20 @@
 
             if (results.Any() && !string.IsNullOrEmpty(currentSearchQuery))
             {
-                await SearchStateService.ClearSearchStateAsync();
-                await SearchStateService.SaveSearchStateAsync(currentSearchQuery, recommendedGenres, detectedMood, selectedContentType, results.ToList());
+                try
+                {
+                    await SearchStateService.ClearSearchStateAsync();
+                    await SearchStateService.SaveSearchStateAsync(
+                        currentSearchQuery,
+                        recommendedGenres,
+                        detectedMood,
+                        selectedContentType,
+                        results.ToList());
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SearchState] Ошибка сохранения: {ex.Message}");
+                }
             }
         }
         catch (Exception ex)

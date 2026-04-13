@@ -41,29 +41,30 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.6rem 1.2rem;
-    background: rgba(230, 57, 70, 0.1);
-    border: 1px solid rgba(230, 57, 70, 0.2);
+    background: rgba(10, 61, 107, 0.2);
+    border: 1px solid rgba(10, 61, 107, 0.6);
     border-radius: 50px;
-    color: #e63946;
+    color: #3b82f6;
     text-decoration: none;
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 500;
-    transition: all 0.2s ease;
+    transition: all 0.2s;
     position: relative;
 }
 
     .favorites-btn:hover {
-        background: rgba(230, 57, 70, 0.2);
-        border-color: rgba(230, 57, 70, 0.4);
+        background: rgba(10, 61, 107, 0.4);
+        border-color: rgba(10, 61, 107, 0.8);
         transform: translateY(-2px);
+        color: #60a5fa;
     }
 
     .favorites-btn .badge {
         position: absolute;
         top: -6px;
         right: -6px;
-        background: #e63946;
+        background: #f97316;
         color: white;
         font-size: 0.7rem;
         font-weight: 700;

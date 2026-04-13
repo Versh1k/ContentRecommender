@@ -55,7 +55,6 @@ public class ContentDetailService : IContentDetailService
             Console.WriteLine($" Запрос деталей фильма: {url}");
 
             var response = await _http.GetAsync(url);
-
             if (!response.IsSuccessStatusCode)
             {
                 Console.WriteLine($" Ошибка API: {response.StatusCode}");
@@ -63,29 +62,31 @@ public class ContentDetailService : IContentDetailService
             }
 
             var json = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"DEBUG JSON: {json}");
             var filmData = JsonSerializer.Deserialize<KinopoiskFilmDto>(json);
-
-            if (filmData == null)
-                return null;
+            if (filmData == null) return null;
 
             var trailers = await GetTrailersAsync(externalId);
 
             bool isFavorite = false;
             if (!string.IsNullOrEmpty(userId))
-            {
                 isFavorite = await _favoritesRepository.IsFavoriteAsync(userId, externalId, "Kinopoisk");
-            }
 
             var format = DetermineFormat(filmData);
+
+            // Выбираем постер: сначала posterUrlPreview, если нет – posterUrl
+            var poster = filmData.posterUrlPreview ?? filmData.posterUrl;
+            if (!string.IsNullOrEmpty(poster))
+                poster = poster.Replace("/300x450/", "/700x1000/");
 
             return new ContentDetailDto
             {
                 ExternalId = externalId,
                 Source = "Kinopoisk",
                 Format = format,
-                Title = filmData.nameRu ?? filmData.nameEn ?? "Без названия",
+                Title = filmData.nameRu ?? filmData.nameOriginal ?? filmData.nameEn ?? "Без названия",
                 Description = filmData.description,
-                CoverUrl = filmData.posterUrl?.Replace("/300x450/", "/700x1000/"),
+                CoverUrl = poster,
                 Year = filmData.year,
                 Rating = filmData.ratingKinopoisk,
                 Genres = filmData.genres?.Select(g => g.genre).Where(g => !string.IsNullOrEmpty(g)).ToList() ?? new List<string>(),
@@ -277,12 +278,14 @@ public class ContentDetailService : IContentDetailService
         public int filmId { get; set; }
         public string? nameRu { get; set; }
         public string? nameEn { get; set; }
+        public string? nameOriginal { get; set; }
         public string? description { get; set; }
         public int? year { get; set; }
         public double? ratingKinopoisk { get; set; }
         public List<GenreItem>? genres { get; set; }
         public int? filmLength { get; set; }
         public string? posterUrl { get; set; }
+        public string? posterUrlPreview { get; set; }
         public string? type { get; set; }
         public List<PersonItem>? directors { get; set; }
         public List<PersonItem>? actors { get; set; }

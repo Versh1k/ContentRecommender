@@ -37,10 +37,10 @@
 
         <div class="favorites-filters">
             <button class="filter-btn @(filterFormat == null ? "active" : "")" @onclick="() => SetFilter(null)">Все</button>
-            <button class="filter-btn @(filterFormat == ContentFormat.Movie ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Movie)">🎬 Фильмы</button>
-            <button class="filter-btn @(filterFormat == ContentFormat.Series ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Series)">📺 Сериалы</button>
-            <button class="filter-btn @(filterFormat == ContentFormat.Cartoon ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Cartoon)">🎨 Мультфильмы</button>
-            <button class="filter-btn @(filterFormat == ContentFormat.Book ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Book)">📚 Книги</button>
+            <button class="filter-btn @(filterFormat == ContentFormat.Movie ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Movie)"> Фильмы</button>
+            <button class="filter-btn @(filterFormat == ContentFormat.Series ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Series)"> Сериалы</button>
+            <button class="filter-btn @(filterFormat == ContentFormat.Cartoon ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Cartoon)"> Мультфильмы</button>
+            <button class="filter-btn @(filterFormat == ContentFormat.Book ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Book)"> Книги</button>
         </div>
 
         @if (isLoading)
@@ -54,7 +54,7 @@
         @if (!isLoading && !filteredFavorites.Any())
         {
             <div class="empty-state">
-                <div class="empty-icon">📭</div>
+                <div class="empty-icon"></div>
                 <h3>Пока пусто</h3>
                 <p>Добавляйте контент в избранное во время поиска</p>
                 <a href="/search" class="btn-primary">Найти контент</a>

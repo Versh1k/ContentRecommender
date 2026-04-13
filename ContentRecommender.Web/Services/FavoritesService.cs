@@ -10,6 +10,7 @@ public interface IFavoritesService
     Task<bool> ToggleFavoriteAsync(ContentItem item);
     Task<HashSet<string>> GetUserFavoriteKeysAsync();
     bool IsFavorite(string externalId, string source, HashSet<string> favoriteKeys);
+    Task<bool> IsFavoriteAsync(string externalId, string source); // новый метод
     event Action? OnFavoritesChanged;
 }
 
@@ -22,7 +23,18 @@ public class FavoritesService : IFavoritesService
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     public event Action? OnFavoritesChanged;
+    public async Task<bool> IsFavoriteAsync(string externalId, string source)
+    {
+        if (string.IsNullOrEmpty(externalId) || string.IsNullOrEmpty(source))
+            return false;
 
+        var userId = await GetCurrentUserIdAsync();
+        if (string.IsNullOrEmpty(userId))
+            return false;
+
+        // Проверка через репозиторий (прямой запрос к БД)
+        return await _repository.IsFavoriteAsync(userId, externalId, source);
+    }
     public FavoritesService(
         IFavoritesRepository repository,
         AuthenticationStateProvider authStateProvider,
@@ -38,18 +50,18 @@ public class FavoritesService : IFavoritesService
         await _lock.WaitAsync();
         try
         {
-            Console.WriteLine($"🔍 ToggleFavoriteAsync: {item.Title} ({item.ExternalId})");
+            Console.WriteLine($" ToggleFavoriteAsync: {item.Title} ({item.ExternalId})");
 
             var userId = await GetCurrentUserIdAsync();
             if (string.IsNullOrEmpty(userId))
             {
-                Console.WriteLine("❌ Не удалось получить UserId");
+                Console.WriteLine(" Не удалось получить UserId");
                 return false;
             }
 
             if (string.IsNullOrEmpty(item.ExternalId) || string.IsNullOrEmpty(item.Source))
             {
-                Console.WriteLine("❌ Пустой ExternalId или Source");
+                Console.WriteLine(" Пустой ExternalId или Source");
                 return false;
             }
 
@@ -65,8 +77,9 @@ public class FavoritesService : IFavoritesService
                     _ => ContentFormat.Movie
                 };
             }
+            bool isFavoriteNow = _favoriteKeys.Contains(key);
 
-            if (_favoriteKeys.Contains(key))
+            if (isFavoriteNow)
             {
                 Console.WriteLine($" Удаление из избранного: {key}");
                 if (await _repository.RemoveFromFavoritesAsync(userId, item.ExternalId, item.Source))
@@ -74,12 +87,12 @@ public class FavoritesService : IFavoritesService
                     _favoriteKeys.Remove(key);
                     Console.WriteLine($" Удалено, всего избранного: {_favoriteKeys.Count}");
                     OnFavoritesChanged?.Invoke();
-                    return true;
+                    return false;
                 }
             }
             else
             {
-                Console.WriteLine($" Добавление в избранное: {key}");
+                Console.WriteLine($"➕ Добавление в избранное: {key}");
                 var favorite = new FavoriteItem
                 {
                     UserId = userId,
@@ -96,7 +109,7 @@ public class FavoritesService : IFavoritesService
                     _favoriteKeys.Add(key);
                     Console.WriteLine($" Добавлено, всего избранного: {_favoriteKeys.Count}");
                     OnFavoritesChanged?.Invoke();
-                    return true;
+                    return true; // теперь В избранном
                 }
             }
 
@@ -104,7 +117,23 @@ public class FavoritesService : IFavoritesService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($" Ошибка избранного: {ex.Message}");
+            Console.WriteLine($"❌ Ошибка избранного: {ex.Message}");
+
+            // Если ошибка связана с дубликатом (нарушение уникальности), значит элемент уже есть в БД,
+            // но по какой-то причине отсутствует в кэше. Синхронизируем кэш.
+            if (ex.Message.Contains("duplicate") || ex.Message.Contains("уникальности") || ex.Message.Contains("23505"))
+            {
+                var userId = await GetCurrentUserIdAsync();
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    await RefreshFavoritesCache(userId);
+                    string key = $"{item.Source}:{item.ExternalId}";
+                    bool nowInFav = _favoriteKeys.Contains(key);
+                    Console.WriteLine($" Синхронизация: элемент {key} теперь {(nowInFav ? "в избранном" : "не в избранном")}");
+                    return nowInFav;
+                }
+            }
+
             return false;
         }
         finally
@@ -144,7 +173,6 @@ public class FavoritesService : IFavoritesService
         {
             return false;
         }
-
         return favoriteKeys.Contains($"{source}:{externalId}");
     }
 
@@ -173,5 +201,10 @@ public class FavoritesService : IFavoritesService
         }
 
         return userId;
+    }
+    private async Task RefreshFavoritesCache(string userId)
+    {
+        var favorites = await _repository.GetUserFavoritesAsync(userId);
+        _favoriteKeys = new HashSet<string>(favorites.Select(f => $"{f.Source}:{f.ExternalId}"));
     }
 }

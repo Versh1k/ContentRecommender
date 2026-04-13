@@ -17,7 +17,7 @@
 else if (content == null)
 {
     <div class="error-container">
-        <h2>😕 Контент не найден</h2>
+        <h2>Контент не найден</h2>
         <p>Запрашиваемая страница не существует или была удалена</p>
         <a href="/" class="btn-primary">На главную</a>
     </div>
@@ -112,13 +112,6 @@ else
                 }
 
                 <div class="detail-buttons">
-                    @if (content.Format != ContentFormat.Book && content.Trailers?.Any() == true)
-                    {
-                        <button class="btn-trailer" @onclick="ShowTrailerModal">
-                            ▶️ Смотреть трейлер
-                        </button>
-                    }
-
                     <a href="@content.ExternalUrl" target="_blank" class="btn-external">
                         @GetExternalButtonText(content.Source)
                     </a>
@@ -129,7 +122,7 @@ else
         @if (content.SimilarItems?.Any() == true)
         {
             <div class="similar-section">
-                <h2>🎬 Похожие</h2>
+                <h2>Похожие</h2>
                 <div class="similar-grid">
                     @foreach (var similar in content.SimilarItems)
                     {
@@ -160,45 +153,6 @@ else
                 </div>
             </div>
         }
-
-        @if (showTrailerModal && content?.Trailers?.Any() == true)
-        {
-            <div class="modal-overlay" @onclick="CloseTrailerModal">
-                <div class="modal-content" @onclick:stopPropagation="true">
-                    <div class="modal-header">
-                        <h3>🎬 Трейлер</h3>
-                        <button class="modal-close" @onclick="CloseTrailerModal">✕</button>
-                    </div>
-
-                    <div class="modal-body">
-                        @if (!string.IsNullOrEmpty(currentTrailer?.YouTubeId))
-                        {
-                            <div class="video-container">
-                                <iframe src="https://www.youtube.com/embed/@currentTrailer.YouTubeId?autoplay=1"
-                                        frameborder="0"
-                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                        allowfullscreen>
-                                </iframe>
-                            </div>
-                            <p class="trailer-title">@currentTrailer.Title</p>
-                        }
-
-                        @if (content.Trailers.Count > 1)
-                        {
-                            <div class="trailer-selector">
-                                @foreach (var trailer in content.Trailers)
-                                {
-                                    <button class="trailer-btn @(currentTrailer == trailer ? "active" : "")"
-                                            @onclick="() => SelectTrailer(trailer)">
-                                        🎞️ @trailer.Title
-                                    </button>
-                                }
-                            </div>
-                        }
-                    </div>
-                </div>
-            </div>
-        }
     </div>
 }
 
@@ -208,8 +162,6 @@ else
 
     private ContentDetailDto? content;
     private bool isLoading = true;
-    private bool showTrailerModal = false;
-    private TrailerDto? currentTrailer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -222,16 +174,15 @@ else
         {
             isLoading = true;
             content = await DetailService.GetContentDetailsAsync(Source, Id);
-
             if (content != null)
             {
-                Console.WriteLine($"🎬 Трейлеров найдено: {content.Trailers?.Count ?? 0}");
                 content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, 6);
+                content.IsFavorite = await FavoritesService.IsFavoriteAsync(content.ExternalId, content.Source);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Ошибка загрузки: {ex.Message}");
+            Console.WriteLine($"Ошибка загрузки: {ex.Message}");
             content = null;
         }
         finally
@@ -260,8 +211,7 @@ else
                 Genres = content.Genres,
                 Description = content.Description
             },
-
-            ContentFormat.Movie or ContentFormat.Series or ContentFormat.Cartoon => new Movie
+            _ => new Movie
             {
                 ExternalId = content.ExternalId,
                 Source = content.Source,
@@ -274,48 +224,20 @@ else
                 Rating = content.Rating,
                 Genres = content.Genres,
                 Description = content.Description
-            },
-
-            _ => new Movie
-            {
-                ExternalId = content.ExternalId,
-                Source = content.Source,
-                Format = content.Format,
-                Title = content.Title,
-                CoverUrl = content.CoverUrl
             }
         };
 
-        var success = await FavoritesService.ToggleFavoriteAsync(item);
-
-        if (success)
+        bool newState = await FavoritesService.ToggleFavoriteAsync(item);
+        if (content.IsFavorite != newState)
         {
-            content.IsFavorite = !content.IsFavorite;
+            content.IsFavorite = newState;
             StateHasChanged();
         }
     }
 
     private async Task ShareContent()
     {
-        var url = Navigation.Uri;
-        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", url);
-    }
-
-    private void ShowTrailerModal()
-    {
-        currentTrailer = content?.Trailers?.FirstOrDefault();
-        showTrailerModal = true;
-    }
-
-    private void CloseTrailerModal()
-    {
-        showTrailerModal = false;
-        currentTrailer = null;
-    }
-
-    private void SelectTrailer(TrailerDto trailer)
-    {
-        currentTrailer = trailer;
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Navigation.Uri);
     }
 
     private void NavigateToContent(string source, string externalId)
@@ -334,8 +256,8 @@ else
 
     private string GetExternalButtonText(string source) => source.ToLower() switch
     {
-        "kinopoisk" => " Открыть на Кинопоиске",
-        "googlebooks" => " Читать на Google Books",
+        "kinopoisk" => "Открыть на Кинопоиске",
+        "googlebooks" => "Читать на Google Books",
         _ => "Открыть"
     };
 }
