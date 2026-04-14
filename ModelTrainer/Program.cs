@@ -31,8 +31,8 @@ class Program
         Console.WriteLine(" Обучение модели настроений (LightGBM)\n");
 
         string dataPath = @"C:\Users\versh\source\repos\ContentRecommender\ContentRecommender\ContentRecommender.Web\ML\Data";
-        string dataFile = Path.Combine(dataPath, "train123_fixed_shuffled.csv");
-        string modelPath = Path.Combine(dataPath, @"..\Models\MoodAnalyzer5.zip");
+        string dataFile = Path.Combine(dataPath, "train_fixed.csv");
+        string modelPath = Path.Combine(dataPath, @"..\Models\MoodAnalyzer(700prim_na_class).zip");
 
         if (!File.Exists(dataFile))
         {
@@ -56,7 +56,6 @@ class Program
         var trainData = split.TrainSet;
         var testData = split.TestSet;
 
-        // ✅ МАКСИМАЛЬНО ПРОСТАЯ ФЕЧЕРИЗАЦИЯ (работает в любой версии ML.NET)
         var pipeline = mlContext.Transforms.Conversion.MapValueToKey("Label")
             .Append(mlContext.Transforms.Text.FeaturizeText("Features", nameof(ModelInput.Text)))
             .Append(mlContext.MulticlassClassification.Trainers.LightGbm(

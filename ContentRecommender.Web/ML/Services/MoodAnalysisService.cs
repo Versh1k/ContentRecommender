@@ -46,9 +46,9 @@ public class MoodAnalysisService : IMoodAnalysisService
         {
             var possiblePaths = new[]
             {
-            Path.Combine(_env.ContentRootPath, "ML", "Models", "MoodAnalyzer4.zip"),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ML", "Models", "MoodAnalyzer4.zip"),
-            Path.Combine(Directory.GetCurrentDirectory(), "ML", "Models", "MoodAnalyzer4.zip")
+            Path.Combine(_env.ContentRootPath, "ML", "Models", "MoodAnalyzer(700prim_na_class).zip"),
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ML", "Models", "MoodAnalyzer(700prim_na_class).zip"),
+            Path.Combine(Directory.GetCurrentDirectory(), "ML", "Models", "MoodAnalyzer(700prim_na_class).zip")
         };
 
             string? modelPath = null;
