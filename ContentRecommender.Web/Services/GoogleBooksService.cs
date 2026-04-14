@@ -5,6 +5,7 @@ using ContentRecommender.Web.ML.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -147,8 +148,6 @@ public class GoogleBooksService
         return await SearchByGenresRussian(genres, 15);
     }
 
-    // ========== ПРИВАТНЫЕ МЕТОДЫ ==========
-
     private async Task<List<Book>> FetchBooksWithRetry(string url, int limit, int maxRetries = 3)
     {
         for (int attempt = 1; attempt <= maxRetries; attempt++)
@@ -161,6 +160,13 @@ public class GoogleBooksService
                     var json = await response.Content.ReadAsStringAsync();
                     var result = JsonSerializer.Deserialize<GoogleBooksResponse>(json);
                     return ParseBooksFromResponse(result, limit);
+                }
+                else if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    Console.WriteLine($"[GoogleBooks] Слишком много запросов (429). Пауза 30 секунд...");
+                    await Task.Delay(30000);
+                    attempt--;
+                    continue;
                 }
                 else if (attempt == maxRetries)
                 {

@@ -72,40 +72,21 @@ public class KinopoiskService
         var random = seed.HasValue ? new Random(seed.Value.GetHashCode()) : _rnd;
         var movies = new List<Movie>();
 
-        var genreNames = keywords.Where(k => !k.StartsWith("keyword:")).ToList();
         var keywordQuery = keywords.FirstOrDefault(k => k.StartsWith("keyword:"))?.Replace("keyword:", "").Trim();
 
-        if (genreNames.Any())
-        {
-            var genreIds = genreNames
-                .Select(g => GenreIds.GetValueOrDefault(g.ToLowerInvariant().Trim(), 0))
-                .Where(id => id > 0)
-                .Distinct()
-                .ToList();
-
-            if (genreIds.Any())
-            {
-                foreach (var genreId in genreIds)
-                {
-                    if (movies.Count >= limit) break;
-                    var url = $"{_cfg.BaseUrl}?limit=40&genres={genreId}&ratingFrom=5&order=RATING";
-                    var fetched = await FetchMovies(url, type, limit, random);
-                    movies.AddRange(fetched.Where(m => !movies.Any(x => x.ExternalId == m.ExternalId)));
-                }
-            }
-            else if (!string.IsNullOrEmpty(keywordQuery))
-            {
-                var url = $"{_cfg.BaseUrl}?keyword={Uri.EscapeDataString(keywordQuery)}&limit=40&ratingFrom=5&order=RATING";
-                var keywordMovies = await FetchMovies(url, type, limit, random);
-                movies.AddRange(keywordMovies);
-            }
-        }
-
-        if (!string.IsNullOrEmpty(keywordQuery) && movies.Count < limit)
+        if (!string.IsNullOrEmpty(keywordQuery))
         {
             var url = $"{_cfg.BaseUrl}?keyword={Uri.EscapeDataString(keywordQuery)}&limit=40&ratingFrom=5&order=RATING";
-            var keywordMovies = await FetchMovies(url, type, limit, random);
-            movies.AddRange(keywordMovies.Where(m => !movies.Any(x => x.ExternalId == m.ExternalId)));
+            var fetched = await FetchMovies(url, type, limit, random);
+            movies.AddRange(fetched);
+            Console.WriteLine($"[Kinopoisk] keyword-поиск '{keywordQuery}': найдено {movies.Count} фильмов");
+        }
+        else
+        {
+            var fallbackUrl = $"{_cfg.BaseUrl}?limit=40&ratingFrom=7&order=RATING";
+            var fetched = await FetchMovies(fallbackUrl, type, limit, random);
+            movies.AddRange(fetched);
+            Console.WriteLine($"[Kinopoisk] fallback (без keyword): найдено {movies.Count} фильмов");
         }
 
         return movies.OrderByDescending(m => m.Rating ?? 0).Take(limit).ToList();
@@ -135,6 +116,10 @@ public class KinopoiskService
 
                 movies.Add(movie);
                 if (movies.Count >= limit) break;
+            }
+            foreach (var item in data.items.Take(3))
+            {
+                Console.WriteLine($"Фильм: {item.nameRu}, жанры: {string.Join(",", item.genres?.Select(g => g.genre) ?? new List<string>())}");
             }
 
             return movies;
@@ -205,6 +190,46 @@ public class KinopoiskService
             SearchCriteria.SearchContentType.Cartoons => ContentTypeCategory.Cartoon,
             _ => ContentTypeCategory.FeatureFilm
         };
+    }
+
+    public async Task<Movie?> GetBestMovieByGenres(List<string> genreNames, ContentTypeCategory type, int minRating = 5)
+    {
+        var genreIds = genreNames
+            .Select(g => GenreIds.GetValueOrDefault(g.ToLowerInvariant().Trim(), 0))
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (!genreIds.Any())
+        {
+            Console.WriteLine($"[Kinopoisk] Не найдены ID для жанров: {string.Join(", ", genreNames)}");
+            return null;
+        }
+
+        var random = new Random();
+        var allMovies = new List<Movie>();
+
+        allMovies = allMovies
+        .Where(m => m.DurationMinutes >= 70)       // только полный метр
+        .Where(m => !string.IsNullOrEmpty(m.CoverUrl)) // с постером
+        .ToList();
+
+        foreach (var genreId in genreIds)
+        {
+            var url = $"{_cfg.BaseUrl}?limit=40&genres={genreId}&ratingFrom={minRating}&order=RATING";
+            var fetched = await FetchMovies(url, type, 40, random);
+            allMovies.AddRange(fetched);
+            Console.WriteLine($"[Kinopoisk] По жанру id={genreId} найдено {fetched.Count} фильмов");
+        }
+
+        var bestMovie = allMovies
+            .OrderByDescending(m => m.Rating ?? 0)
+            .FirstOrDefault();
+
+        if (bestMovie != null)
+            Console.WriteLine($"[Kinopoisk] Лучший фильм: {bestMovie.Title} (рейтинг {bestMovie.Rating})");
+
+        return bestMovie;
     }
 
     public Task<List<Movie>> SearchMoviesByKeywordsAsync(List<string> keywords, SearchCriteria.SearchContentType type) => Task.FromResult(new List<Movie>());

@@ -1,5 +1,6 @@
 ﻿using ContentRecommender.Core.Models;
 using Microsoft.JSInterop;
+using System.Text.Json;
 using static ContentRecommender.Web.Services.SearchStateService;
 
 namespace ContentRecommender.Web.Services;
@@ -15,6 +16,7 @@ public class SearchStateService : ISearchStateService
 {
     private readonly IJSRuntime _js;
     private SearchState? _currentState;
+    private string userId;
 
     public SearchStateService(IJSRuntime js)
     {
@@ -32,6 +34,7 @@ public class SearchStateService : ISearchStateService
                 Mood = mood?.ToString(),
                 ContentType = contentType.ToString(),
                 Timestamp = DateTime.UtcNow.Ticks,
+                UserId = userId,
                 SavedResults = results.Select(r => new SavedResult
                 {
                     ExternalId = r.ExternalId,
@@ -61,16 +64,20 @@ public class SearchStateService : ISearchStateService
                 return _currentState;
 
             var json = await _js.InvokeAsync<string>("localStorage.getItem", "searchState");
-
             if (string.IsNullOrEmpty(json))
                 return null;
-
-            _currentState = System.Text.Json.JsonSerializer.Deserialize<SearchState>(json);
+            _currentState = JsonSerializer.Deserialize<SearchState>(json);
             return _currentState;
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("JavaScript interop"))
+        {
+            // Игнорируем ошибки на этапе предварительного рендеринга
+            Console.WriteLine($"JS interop не готов: {ex.Message}");
+            return null;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($" Ошибка загрузки состояния: {ex.Message}");
+            Console.WriteLine($"Ошибка загрузки состояния: {ex.Message}");
             return null;
         }
     }
@@ -95,6 +102,7 @@ public class SearchStateService : ISearchStateService
         public string? Mood { get; set; }
         public string ContentType { get; set; } = "";
         public long Timestamp { get; set; }
+        public string? UserId { get; set; }
         public List<SavedResult>? SavedResults { get; set; }
     }
 

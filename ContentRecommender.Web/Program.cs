@@ -89,6 +89,7 @@ builder.Services.AddSingleton<MLContext>();
 builder.Services.AddScoped<IMoodAnalysisService, MoodAnalysisService>();
 
 // Другие сервисы
+builder.Services.AddScoped<ContentSearchService>();
 builder.Services.AddScoped<IContentDetailService, ContentDetailService>();
 builder.Services.AddScoped<IFavoritesService, FavoritesService>();
 builder.Services.AddScoped<ISearchStateService, SearchStateService>();

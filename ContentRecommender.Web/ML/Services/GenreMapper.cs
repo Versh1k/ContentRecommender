@@ -21,7 +21,7 @@ public static class GenreMapper
     };
 
     // Компактная версия GetGenresFromMoodScores
-    public static List<string> GetGenresFromMoodScores(MoodType predictedMood, float[] scores, float threshold = 0.05f)
+    public static List<string> GetGenresFromMoodScores(MoodType predictedMood, float[] scores, float threshold = 0.2f)
     {
         if (scores == null || scores.Length == 0) return new List<string>();
 
