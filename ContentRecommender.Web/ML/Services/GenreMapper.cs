@@ -27,32 +27,33 @@ public static class GenreMapper
         if (scores == null || scores.Length == 0)
             return new List<string>();
 
-        var sorted = scores
-            .Select((score, idx) => (Mood: (MoodType)idx, Score: score))
-            .OrderByDescending(x => x.Score)
-            .ToList();
+        ///ТОП 2 жанр
+        //var sorted = scores
+        //    .Select((score, idx) => (Mood: (MoodType)idx, Score: score))
+        //    .OrderByDescending(x => x.Score)
+        //    .ToList();
 
         var resultGenres = new List<string>();
 
         if (MoodBaseGenres.TryGetValue(predictedMood, out var primaryGenres))
             resultGenres.AddRange(primaryGenres);
 
-        if (sorted.Count >= 2)
-        {
-            var top = sorted[0];
-            var second = sorted[1];
+        //if (sorted.Count >= 2)
+        //{
+        //    var top = sorted[0];
+        //    var second = sorted[1];
 
-            if (top.Mood == predictedMood && top.Score - second.Score < threshold)
-            {
-                if (MoodBaseGenres.TryGetValue(second.Mood, out var secondaryGenres))
-                    resultGenres.AddRange(secondaryGenres);
-            }
-            else if (top.Mood != predictedMood)
-            {
-                if (MoodBaseGenres.TryGetValue(top.Mood, out var altGenres))
-                    resultGenres.AddRange(altGenres);
-            }
-        }
+        //    if (top.Mood == predictedMood && top.Score - second.Score < threshold)
+        //    {
+        //        if (MoodBaseGenres.TryGetValue(second.Mood, out var secondaryGenres))
+        //            resultGenres.AddRange(secondaryGenres);
+        //    }
+        //    else if (top.Mood != predictedMood)
+        //    {
+        //        if (MoodBaseGenres.TryGetValue(top.Mood, out var altGenres))
+        //            resultGenres.AddRange(altGenres);
+        //    }
+        //}
 
         return resultGenres.Distinct().ToList();
     }

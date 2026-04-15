@@ -31,12 +31,12 @@
                 </div>
             }
 
-            @if (!string.IsNullOrEmpty(Item.Description))
+           @*  @if (!string.IsNullOrEmpty(Item.Description))
             {
                 <div class="cover-overlay">
                     <p>@TruncateDescription(Item.Description, 150)</p>
                 </div>
-            }
+            } *@
 
             <button class="favorite-btn @(IsFavorite ? "active" : "")"
                     @onclick="HandleToggleFavorite"
