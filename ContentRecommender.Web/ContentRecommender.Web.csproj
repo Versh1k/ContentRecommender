@@ -29,7 +29,7 @@
 		<ProjectReference Include="..\ContentRecommender.Data\ContentRecommender.Data.csproj" />
 	</ItemGroup>
 	<ItemGroup>
-		<None Include="ML\Models\MoodAnalyzer.zip">
+		<None Include="ML\Models\MoodAnalyzer(700prim_na_class).zip">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>

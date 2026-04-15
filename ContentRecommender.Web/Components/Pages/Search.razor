@@ -416,11 +416,11 @@
                 }
 
                 // Поиск книг (если нужно) – аналогично можно добавить для GoogleBooksService
-                // if (ShouldSearchBooks(selectedContentType))
-                // {
-                //     var books = await GoogleBooksService.SearchBooksByKeywordsWithFallbackAsync(recommendedGenres, selectedContentType, 10);
-                //     finalResults.AddRange(books);
-                // }
+                if (ShouldSearchBooks(selectedContentType))
+                {
+                    var books = await GoogleBooksService.SearchBooksByKeywordsWithFallbackAsync(recommendedGenres, selectedContentType, 10);
+                    finalResults.AddRange(books);
+                }
             }
             else // SearchMode.ByKeywords
             {
@@ -437,6 +437,12 @@
                     Console.WriteLine($"[TextSearch] Найдено фильмов: {movies.Count}");
                 }
 
+                if (ShouldSearchBooks(selectedContentType))
+                {
+                    var books = await GoogleBooksService.SearchByTextAsync(currentSearchQuery, limit: 10);
+                    finalResults.AddRange(books);
+                    Console.WriteLine($"[TextSearch] Найдено книг: {books.Count}");
+                }
                 // Для книг можно добавить аналогичный вызов GoogleBooksService.SearchByTextAsync
             }
 
@@ -490,6 +496,11 @@
                type == SearchCriteria.SearchContentType.TvSeries ||
                type == SearchCriteria.SearchContentType.Cartoons;
     }
+    private bool ShouldSearchBooks(SearchCriteria.SearchContentType type)
+    {
+        return type == SearchCriteria.SearchContentType.All ||
+               type == SearchCriteria.SearchContentType.AllBooks;
+    }
 
     private ContentTypeCategory MapSearchTypeToCategory(SearchCriteria.SearchContentType type)
     {
@@ -498,7 +509,7 @@
             SearchCriteria.SearchContentType.Movies => ContentTypeCategory.FeatureFilm,
             SearchCriteria.SearchContentType.TvSeries => ContentTypeCategory.TvSeries,
             SearchCriteria.SearchContentType.Cartoons => ContentTypeCategory.Cartoon,
-            _ => ContentTypeCategory.FeatureFilm // для "All" или других – по умолчанию фильмы
+            _ => ContentTypeCategory.FeatureFilm
         };
     }
 

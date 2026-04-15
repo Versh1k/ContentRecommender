@@ -235,9 +235,6 @@ public class GoogleBooksService
         };
     }
 
-    /// <summary>
-    /// Простой fallback: из первого слова определяем настроение (для нового MoodType)
-    /// </summary>
     private MoodType? MapFirstKeywordToMood(string keyword)
     {
         var lower = keyword.ToLowerInvariant();
@@ -254,6 +251,15 @@ public class GoogleBooksService
         if (lower.Contains("эпик") || lower.Contains("героическ")) return MoodType.Epic;
         if (lower.Contains("приключ")) return MoodType.Adventure;
         return null;
+    }
+    public async Task<List<Book>> SearchByTextAsync(string query, int limit = 10)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return new List<Book>();
+
+        var encodedQuery = Uri.EscapeDataString(query.Trim());
+        var url = $"{_cfg.BaseUrl}?q={encodedQuery}&maxResults=40&orderBy=relevance&printType=books";
+        return await FetchBooksWithRetry(url, limit);
     }
 
     private List<string> GetRandomGenres()

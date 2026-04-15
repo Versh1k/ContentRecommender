@@ -111,10 +111,15 @@ public class MoodAnalysisService : IMoodAnalysisService
             return (MoodType.Everyday, 0f, Array.Empty<float>());
 
         var prediction = _predictionEngine.Predict(new ModelInput { Text = text });
-        var softmaxScores = Softmax(prediction.Scores);
-        var maxIndex = Array.IndexOf(softmaxScores, softmaxScores.Max());
-        var confidence = softmaxScores[maxIndex];
-        return ((MoodType)maxIndex, confidence, softmaxScores);
+        var predictedMood = (MoodType)prediction.PredictedLabel;
+        float confidence = 0f;
+        float[] scores = prediction.Scores ?? Array.Empty<float>();
+        if (scores.Length > 0)
+        {
+            var softmaxScores = Softmax(scores);
+            confidence = softmaxScores[prediction.PredictedLabel];
+        }
+        return (predictedMood, confidence, scores);
     }
     public MoodType? AnalyzeMood(string text)
     {
