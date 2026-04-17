@@ -6,6 +6,7 @@ using ContentRecommender.Data.Repositories;
 using ContentRecommender.Web.Components;
 using ContentRecommender.Web.ML.Services;
 using ContentRecommender.Web.Services;
+using ContentRecommender.Web.Services.MovieSearch;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.ML;
@@ -55,29 +56,20 @@ builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 
-// Загружаем конфигурацию
-var kinopoiskConfig = builder.Configuration.GetSection("Kinopoisk").Get<KinopoiskConfig>()
-    ?? throw new InvalidOperationException("Kinopoisk configuration is missing");
+// Загружаем конфигурации
 var googleBooksConfig = builder.Configuration.GetSection("GoogleBooks").Get<GoogleBooksConfig>()
     ?? throw new InvalidOperationException("GoogleBooks configuration is missing");
 var cacheSettings = builder.Configuration.GetSection("CacheSettings").Get<CacheSettings>()
     ?? new CacheSettings { DurationDays = 7, MaxItemsPerCategory = 15 };
 
-builder.Services.AddSingleton(kinopoiskConfig);
+// Оставляем синглтоны для Google Books и кэша (пока)
 builder.Services.AddSingleton(googleBooksConfig);
 builder.Services.AddSingleton(cacheSettings);
 
 // Репозитории
 builder.Services.AddScoped<IFavoritesRepository, FavoritesRepository>();
 
-// HTTP клиенты
-builder.Services.AddHttpClient<KinopoiskService>((sp, client) =>
-{
-    var config = sp.GetRequiredService<KinopoiskConfig>();
-    client.BaseAddress = new Uri(config.BaseUrl ?? "https://kinopoiskapiunofficial.tech/api/v2.2/films");
-    client.DefaultRequestHeaders.Add("X-API-KEY", config.ApiKey);
-});
-
+// HTTP клиент для Google Books (старый, потом заменим)
 builder.Services.AddHttpClient<GoogleBooksService>((sp, client) =>
 {
     var config = sp.GetRequiredService<GoogleBooksConfig>();
@@ -90,13 +82,32 @@ builder.Services.AddScoped<IMoodAnalysisService, MoodAnalysisService>();
 
 // Другие сервисы
 builder.Services.AddScoped<ContentSearchService>();
-builder.Services.AddScoped<IContentDetailService, ContentDetailService>();
 builder.Services.AddScoped<IFavoritesService, FavoritesService>();
 builder.Services.AddScoped<ISearchStateService, SearchStateService>();
 
-// Кэш (регистрация ДО builder.Build())
+// Кэш
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IContentCacheService, ContentCacheService>();
+
+
+// Конфигурация API (MovieApi секция в appsettings.json)
+builder.Services.Configure<ApiAdapterConfig>(builder.Configuration.GetSection("MovieApi"));
+
+// ML маппер настроений в жанры
+builder.Services.AddScoped<IMlGenreMapper, MlMoodToGenresMapper>();
+
+// Компоненты универсального поиска
+builder.Services.AddScoped<IGenreMapper, GenreMapper>();
+builder.Services.AddScoped<IMovieApiUrlBuilder, MovieApiUrlBuilder>();
+builder.Services.AddScoped<IMovieCategoryResolver, MovieCategoryResolver>();
+builder.Services.AddScoped<IMovieApiResponseParser, ConfigurableJsonParser>();
+
+builder.Services.AddHttpClient<IMovieDetailService, GenericMovieDetailService>();
+
+// ContentDetailService
+builder.Services.AddScoped<IContentDetailService, ContentDetailService>();
+// Основной сервис поиска фильмов
+builder.Services.AddHttpClient<IMovieSearchService, GenericMovieSearchService>();
 
 var app = builder.Build();
 

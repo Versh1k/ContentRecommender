@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Identity
 @using ContentRecommender.Core.Models
 @using ContentRecommender.Core.Services
+@using ContentRecommender.Core.Helpers
 @using ContentRecommender.Web.ML.Services
 @using ContentRecommender.Web.Services
 @using ContentRecommender.Web.Components.Shared
@@ -14,9 +15,9 @@
 @inject ISearchStateService SearchStateService
 @inject IFavoritesService FavoritesService
 @inject IMoodAnalysisService MoodAnalysisService
-@inject KinopoiskService KinopoiskService
+@inject IMlGenreMapper MlGenreMapper
+@inject IMovieSearchService MovieSearchService
 @inject GoogleBooksService GoogleBooksService
-@inject ContentSearchService ContentSearchService
 @inject NavigationManager Navigation
 @inject IFavoritesRepository FavoritesRepository
 @inject AuthenticationStateProvider AuthStateProvider
@@ -180,6 +181,7 @@
     </div>
 </div>
 
+<!-- Разметка без изменений -->
 @code {
     private enum SearchMode { ByMood, ByKeywords }
 
@@ -200,23 +202,10 @@
     private List<ContentItem>? results;
     private SearchCriteria.SearchContentType selectedContentType = SearchCriteria.SearchContentType.All;
 
-    private bool isGenresDropdownOpen = false;
-    private List<string> selectedManualGenres = new();
-    private const int MaxGenres = 3;
-
-    private static readonly List<string> AvailableGenres = new()
-    {
-        "боевик", "приключения", "анимация", "комедия", "криминал",
-        "документальный", "драма", "семейный", "фэнтези", "исторический",
-        "ужасы", "музыка", "мистика", "романтика", "фантастика",
-        "триллер", "военный", "вестерн", "детектив", "биография"
-    };
-
     private HashSet<string> _favoriteKeys = new();
     private string? _currentUserId;
     private bool _isDisposed = false;
     private bool _isLoadingInProgress = false;
-    private bool _isInitialized = false;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -234,7 +223,7 @@
             try
             {
                 var savedState = await SearchStateService.GetSearchStateAsync();
-                if (savedState != null && savedState.SavedResults != null && savedState.SavedResults.Any())
+                if (savedState?.SavedResults?.Any() == true)
                 {
                     Console.WriteLine($"Восстановление поиска: {savedState.Query}");
 
@@ -242,7 +231,7 @@
                     {
                         currentSearchMode = SearchMode.ByMood;
                         userInput = savedState.Query;
-                        detectedMood = Enum.TryParse<MoodType>(savedState.Mood, out var mood) ? mood : (MoodType?)null;
+                        detectedMood = Enum.TryParse<MoodType>(savedState.Mood, out var mood) ? mood : null;
                     }
                     else
                     {
@@ -271,7 +260,6 @@
             {
                 Console.WriteLine($"Ошибка восстановления поиска: {ex.Message}");
             }
-            _isInitialized = true;
         }
     }
 
@@ -321,9 +309,8 @@
 
     private async Task ToggleFavorite(ContentItem item)
     {
-        Console.WriteLine($"Search.razor ToggleFavorite: {item.Title}");
-        var success = await FavoritesService.ToggleFavoriteAsync(item);
-        Console.WriteLine($"ToggleFavorite результат: {success}");
+        Console.WriteLine($"ToggleFavorite: {item.Title}");
+        await FavoritesService.ToggleFavoriteAsync(item);
     }
 
     private void SetType(SearchCriteria.SearchContentType type)
@@ -334,36 +321,7 @@
 
     private void ToggleSearchMode()
     {
-        currentSearchMode = currentSearchMode == SearchMode.ByMood
-            ? SearchMode.ByKeywords
-            : SearchMode.ByMood;
-
-        isGenresDropdownOpen = false;
-
-        if (currentSearchMode == SearchMode.ByMood)
-            selectedManualGenres.Clear();
-
-        StateHasChanged();
-    }
-
-    private void ToggleGenresDropdown()
-    {
-        isGenresDropdownOpen = !isGenresDropdownOpen;
-    }
-
-    private void ToggleGenre(string genre)
-    {
-        if (selectedManualGenres.Contains(genre))
-            selectedManualGenres.Remove(genre);
-        else if (selectedManualGenres.Count < MaxGenres)
-            selectedManualGenres.Add(genre);
-
-        StateHasChanged();
-    }
-
-    private void ClearSelectedGenres()
-    {
-        selectedManualGenres.Clear();
+        currentSearchMode = currentSearchMode == SearchMode.ByMood ? SearchMode.ByKeywords : SearchMode.ByMood;
         StateHasChanged();
     }
 
@@ -391,48 +349,40 @@
 
             if (currentSearchMode == SearchMode.ByMood)
             {
-                // === РЕЖИМ ПО НАСТРОЕНИЮ ===
-                // Используем ML-анализ для определения настроения и жанров
                 var (mlMood, mlConfidence, mlScores) = MoodAnalysisService.AnalyzeMoodFull(currentSearchQuery);
                 detectedMood = mlMood;
-                var genres = GenreMapper.GetGenresFromMoodScores(mlMood, mlScores, threshold: 0.05f);
+                var genres = MlGenreMapper.GetGenresFromMoodScores(mlMood, mlScores, threshold: 0.05f);
 
                 if (!genres.Any())
-                {
-                    // Fallback, если жанры не определились
                     genres = new List<string> { "драма", "приключения" };
-                }
 
                 recommendedGenres = genres.Distinct().ToList();
                 Console.WriteLine($"[ML] Настроение: {mlMood}, уверенность: {mlConfidence:F2}");
-                Console.WriteLine($"[ML] Жанры: {string.Join(", ", recommendedGenres)}");
 
-                // Поиск фильмов по жанрам
                 if (ShouldSearchMovies(selectedContentType))
                 {
-                    var targetType = MapSearchTypeToCategory(selectedContentType);
-                    var movies = await KinopoiskService.SearchWithFallback(recommendedGenres, targetType, 12, searchSeed);
+                    var targetType = ContentTypeMapper.MapToCategory(selectedContentType);
+                    var movies = await MovieSearchService.SearchByGenresAsync(genres, targetType, 12, searchSeed);
+                    Console.WriteLine($"[Search] MovieSearchService вернул {movies.Count} фильмов");
                     finalResults.AddRange(movies);
                 }
 
-                // Поиск книг (если нужно) – аналогично можно добавить для GoogleBooksService
                 if (ShouldSearchBooks(selectedContentType))
                 {
                     var books = await GoogleBooksService.SearchBooksByKeywordsWithFallbackAsync(recommendedGenres, selectedContentType, 10);
                     finalResults.AddRange(books);
                 }
             }
-            else // SearchMode.ByKeywords
+            else // ByKeywords
             {
-                // === РЕЖИМ ПО КЛЮЧЕВЫМ СЛОВАМ ===
-                // Прямой текстовый поиск без ML и жанров
                 detectedMood = null;
-                recommendedGenres.Clear(); // жанры не отображаем
+                recommendedGenres.Clear();
 
                 if (ShouldSearchMovies(selectedContentType))
                 {
-                    var targetType = MapSearchTypeToCategory(selectedContentType);
-                    var movies = await KinopoiskService.SearchByTextAsync(currentSearchQuery, targetType, 12, searchSeed);
+                    var targetType = ContentTypeMapper.MapToCategory(selectedContentType);
+                    var movies = await MovieSearchService.SearchByTextAsync(currentSearchQuery, targetType, 12, searchSeed);
+                    Console.WriteLine($"[Search] MovieSearchService вернул {movies.Count} фильмов");
                     finalResults.AddRange(movies);
                     Console.WriteLine($"[TextSearch] Найдено фильмов: {movies.Count}");
                 }
@@ -443,42 +393,28 @@
                     finalResults.AddRange(books);
                     Console.WriteLine($"[TextSearch] Найдено книг: {books.Count}");
                 }
-                // Для книг можно добавить аналогичный вызов GoogleBooksService.SearchByTextAsync
             }
 
-            // Сортировка и ограничение количества результатов
-            results = finalResults
-                .OrderByDescending(x => x.Rating ?? 0)
-                .Take(20)
-                .ToList();
+            results = finalResults.OrderByDescending(x => x.Rating ?? 0).Take(20).ToList();
+            Console.WriteLine($"[Search] Итоговое количество для отображения: {results.Count}");
 
             if (!results.Any())
-            {
                 errorMessage = "Ничего не найдено. Попробуйте изменить запрос.";
-            }
 
-            // Сохранение состояния поиска для возврата с карточки
-            if (results.Any() && !string.IsNullOrEmpty(currentSearchQuery))
+            if (results.Any())
             {
-                try
-                {
-                    await SearchStateService.ClearSearchStateAsync();
-                    await SearchStateService.SaveSearchStateAsync(
-                        currentSearchQuery,
-                        recommendedGenres,
-                        detectedMood,
-                        selectedContentType,
-                        results.ToList());
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[SearchState] Ошибка сохранения: {ex.Message}");
-                }
+                await SearchStateService.ClearSearchStateAsync();
+                await SearchStateService.SaveSearchStateAsync(
+                    currentSearchQuery,
+                    recommendedGenres,
+                    detectedMood,
+                    selectedContentType,
+                    results.ToList());
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Ошибка при поиске: {ex.Message}";
+            errorMessage = $"Ошибка: {ex.Message}";
             Console.WriteLine($"[Search] Ошибка: {ex}");
         }
         finally
@@ -488,62 +424,12 @@
         }
     }
 
-    // Вспомогательные методы
-    private bool ShouldSearchMovies(SearchCriteria.SearchContentType type)
-    {
-        return type == SearchCriteria.SearchContentType.All ||
-               type == SearchCriteria.SearchContentType.Movies ||
-               type == SearchCriteria.SearchContentType.TvSeries ||
-               type == SearchCriteria.SearchContentType.Cartoons;
-    }
-    private bool ShouldSearchBooks(SearchCriteria.SearchContentType type)
-    {
-        return type == SearchCriteria.SearchContentType.All ||
-               type == SearchCriteria.SearchContentType.AllBooks;
-    }
+    private bool ShouldSearchMovies(SearchCriteria.SearchContentType type) =>
+        type is SearchCriteria.SearchContentType.All or
+            SearchCriteria.SearchContentType.Movies or
+            SearchCriteria.SearchContentType.TvSeries or
+            SearchCriteria.SearchContentType.Cartoons;
 
-    private ContentTypeCategory MapSearchTypeToCategory(SearchCriteria.SearchContentType type)
-    {
-        return type switch
-        {
-            SearchCriteria.SearchContentType.Movies => ContentTypeCategory.FeatureFilm,
-            SearchCriteria.SearchContentType.TvSeries => ContentTypeCategory.TvSeries,
-            SearchCriteria.SearchContentType.Cartoons => ContentTypeCategory.Cartoon,
-            _ => ContentTypeCategory.FeatureFilm
-        };
-    }
-
-    private string GetMoodClass(MoodType mood) => mood switch
-    {
-        MoodType.Romantic => "mood-romantic",
-        MoodType.Mysterious => "mood-mysterious",
-        MoodType.Sad => "mood-sad",
-        MoodType.Funny => "mood-funny",
-        MoodType.Crime => "mood-crime",
-        MoodType.Military => "mood-military",
-        MoodType.Everyday => "mood-everyday",
-        MoodType.Tense => "mood-tense",
-        MoodType.Horror => "mood-horror",
-        MoodType.Inspiring => "mood-inspiring",
-        MoodType.Epic => "mood-epic",
-        MoodType.Adventure => "mood-adventure",
-        _ => "mood-everyday"
-    };
-
-    private string GetMoodDisplayName(MoodType mood) => mood switch
-    {
-        MoodType.Romantic => "Романтичное",
-        MoodType.Mysterious => "Загадочное",
-        MoodType.Sad => "Грустное",
-        MoodType.Funny => "Весёлое",
-        MoodType.Crime => "Криминальное",
-        MoodType.Military => "Военное",
-        MoodType.Everyday => "Повседневное",
-        MoodType.Tense => "Напряжённое",
-        MoodType.Horror => "Страшное",
-        MoodType.Inspiring => "Вдохновляющее",
-        MoodType.Epic => "Эпичное",
-        MoodType.Adventure => "Приключенческое",
-        _ => "Неопределено"
-    };
+    private bool ShouldSearchBooks(SearchCriteria.SearchContentType type) =>
+        type is SearchCriteria.SearchContentType.All or SearchCriteria.SearchContentType.AllBooks;
 }

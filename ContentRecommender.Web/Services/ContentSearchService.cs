@@ -6,18 +6,18 @@ namespace ContentRecommender.Web.Services;
 
 public class ContentSearchService : IContentOrchestrator
 {
-    private readonly KinopoiskService _kinopoisk;
+    private readonly IMovieSearchService _movieSearch;
     private readonly GoogleBooksService _googleBooks;
     private readonly IContentCacheService _cache;
     private readonly ILogger<ContentSearchService> _logger;
 
     public ContentSearchService(
-        KinopoiskService kinopoisk,
+        IMovieSearchService movieSearch,
         GoogleBooksService googleBooks,
         IContentCacheService cache,
         ILogger<ContentSearchService> logger)
     {
-        _kinopoisk = kinopoisk;
+        _movieSearch = movieSearch;
         _googleBooks = googleBooks;
         _cache = cache;
         _logger = logger;
@@ -32,7 +32,7 @@ public class ContentSearchService : IContentOrchestrator
             return cached;
         }
 
-        var movies = await _kinopoisk.SearchMoviesAsync(criteria);
+        var movies = await _movieSearch.SearchMoviesAsync(criteria);
         if (movies.Any())
         {
             await _cache.SaveMoviesToCacheAsync(movies, criteria);
