@@ -12,9 +12,38 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.ML;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ========== РУЧНАЯ ЗАГРУЗКА КОНФИГУРАЦИЙ ==========
+var jsonPath = Path.Combine(builder.Environment.ContentRootPath, "appsettings.json");
+if (!File.Exists(jsonPath))
+    throw new FileNotFoundException("appsettings.json not found", jsonPath);
+
+var jsonString = File.ReadAllText(jsonPath);
+var fullConfig = JsonSerializer.Deserialize<AppSettingsRoot>(jsonString)
+    ?? throw new InvalidOperationException("Failed to deserialize appsettings.json");
+
+var movieOptions = fullConfig.MovieApi;
+var bookOptions = fullConfig.BookApi;
+
+if (movieOptions == null)
+    throw new InvalidOperationException("Секция 'MovieApi' не найдена или повреждена");
+if (bookOptions == null)
+    throw new InvalidOperationException("Секция 'BookApi' не найдена или повреждена");
+
+if (!movieOptions.Providers.ContainsKey(movieOptions.ActiveProvider))
+    throw new InvalidOperationException($"Провайдер фильмов '{movieOptions.ActiveProvider}' не найден. Доступные: {string.Join(", ", movieOptions.Providers.Keys)}");
+if (!bookOptions.Providers.ContainsKey(bookOptions.ActiveProvider))
+    throw new InvalidOperationException($"Провайдер книг '{bookOptions.ActiveProvider}' не найден. Доступные: {string.Join(", ", bookOptions.Providers.Keys)}");
+
+builder.Services.AddSingleton(movieOptions);
+builder.Services.AddSingleton(bookOptions);
+builder.Services.AddSingleton<IOptions<MovieApiOptions>>(new OptionsWrapper<MovieApiOptions>(movieOptions));
+builder.Services.AddSingleton<IOptions<BookApiOptions>>(new OptionsWrapper<BookApiOptions>(bookOptions));
+
+// ========== ОСТАЛЬНЫЕ СЕРВИСЫ ==========
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddControllers();
 builder.Services.AddRazorPages().AddRazorRuntimeCompilation();
@@ -64,14 +93,10 @@ builder.Services.AddScoped<ISearchStateService, SearchStateService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IContentCacheService, ContentCacheService>();
 
-// Регистрация конфигураций через IOptions
-builder.Services.Configure<MovieApiOptions>(builder.Configuration.GetSection("MovieApi"));
-builder.Services.Configure<BookApiOptions>(builder.Configuration.GetSection("BookApi"));
-
 // Фильмы
 builder.Services.AddHttpClient<IMovieSearchService, GenericMovieSearchService>((sp, client) =>
 {
-    var options = sp.GetRequiredService<IOptions<MovieApiOptions>>().Value;
+    var options = sp.GetRequiredService<MovieApiOptions>();
     var provider = options.Providers[options.ActiveProvider];
     client.BaseAddress = new Uri(provider.BaseUrl);
     if (!string.IsNullOrEmpty(provider.ApiKeyHeader) && !string.IsNullOrEmpty(provider.ApiKey))
@@ -80,7 +105,7 @@ builder.Services.AddHttpClient<IMovieSearchService, GenericMovieSearchService>((
 
 builder.Services.AddHttpClient<IMovieDetailService, GenericMovieDetailService>((sp, client) =>
 {
-    var options = sp.GetRequiredService<IOptions<MovieApiOptions>>().Value;
+    var options = sp.GetRequiredService<MovieApiOptions>();
     var provider = options.Providers[options.ActiveProvider];
     client.BaseAddress = new Uri(provider.BaseUrl);
     if (!string.IsNullOrEmpty(provider.ApiKeyHeader) && !string.IsNullOrEmpty(provider.ApiKey))
@@ -90,23 +115,14 @@ builder.Services.AddHttpClient<IMovieDetailService, GenericMovieDetailService>((
 // Книги
 builder.Services.AddHttpClient<IBookSearchService, GenericBookSearchService>((sp, client) =>
 {
-    var options = sp.GetRequiredService<IOptions<BookApiOptions>>().Value;
-
-    // Безопасное получение провайдера
-    if (options.Providers == null || !options.Providers.TryGetValue(options.ActiveProvider, out var provider))
-    {
-        // Fallback: создаём минимальный провайдер или кидаем понятную ошибку
-        throw new InvalidOperationException(
-            $"Provider '{options.ActiveProvider}' not found in BookApi.Providers. " +
-            $"Available: {(options.Providers != null ? string.Join(", ", options.Providers.Keys) : "null")}");
-    }
-
+    var options = sp.GetRequiredService<BookApiOptions>();
+    var provider = options.Providers[options.ActiveProvider];
     client.BaseAddress = new Uri(provider.BaseUrl);
 });
 
 builder.Services.AddHttpClient<IBookDetailService, GenericBookDetailService>((sp, client) =>
 {
-    var options = sp.GetRequiredService<IOptions<BookApiOptions>>().Value;
+    var options = sp.GetRequiredService<BookApiOptions>();
     var provider = options.Providers[options.ActiveProvider];
     client.BaseAddress = new Uri(provider.BaseUrl);
 });
@@ -159,3 +175,10 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+// ========== КЛАСС ДЛЯ ДЕСЕРИАЛИЗАЦИИ КОРНЯ JSON ==========
+public class AppSettingsRoot
+{
+    public MovieApiOptions MovieApi { get; set; } = new();
+    public BookApiOptions BookApi { get; set; } = new();
+}
