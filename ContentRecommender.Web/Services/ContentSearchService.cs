@@ -7,18 +7,18 @@ namespace ContentRecommender.Web.Services;
 public class ContentSearchService : IContentOrchestrator
 {
     private readonly IMovieSearchService _movieSearch;
-    private readonly GoogleBooksService _googleBooks;
+    private readonly IBookSearchService _bookSearch;
     private readonly IContentCacheService _cache;
     private readonly ILogger<ContentSearchService> _logger;
 
     public ContentSearchService(
         IMovieSearchService movieSearch,
-        GoogleBooksService googleBooks,
+        IBookSearchService bookSearch,
         IContentCacheService cache,
         ILogger<ContentSearchService> logger)
     {
         _movieSearch = movieSearch;
-        _googleBooks = googleBooks;
+        _bookSearch = bookSearch;
         _cache = cache;
         _logger = logger;
     }
@@ -50,7 +50,7 @@ public class ContentSearchService : IContentOrchestrator
             return cached;
         }
 
-        var books = await _googleBooks.SearchBooksAsync(criteria);
+        var books = await _bookSearch.SearchByGenresAsync(criteria.Genres ?? new List<string>(), 15);
         if (books.Any())
         {
             await _cache.SaveBooksToCacheAsync(books, criteria);

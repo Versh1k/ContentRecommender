@@ -17,7 +17,7 @@
 @inject IMoodAnalysisService MoodAnalysisService
 @inject IMlGenreMapper MlGenreMapper
 @inject IMovieSearchService MovieSearchService
-@inject GoogleBooksService GoogleBooksService
+@inject IBookSearchService BookSearchService
 @inject NavigationManager Navigation
 @inject IFavoritesRepository FavoritesRepository
 @inject AuthenticationStateProvider AuthStateProvider
@@ -369,7 +369,7 @@
 
                 if (ShouldSearchBooks(selectedContentType))
                 {
-                    var books = await GoogleBooksService.SearchBooksByKeywordsWithFallbackAsync(recommendedGenres, selectedContentType, 10);
+                    var books = await BookSearchService.SearchByGenresAsync(recommendedGenres, 10);
                     finalResults.AddRange(books);
                 }
             }
@@ -389,9 +389,8 @@
 
                 if (ShouldSearchBooks(selectedContentType))
                 {
-                    var books = await GoogleBooksService.SearchByTextAsync(currentSearchQuery, limit: 10);
+                    var books = await BookSearchService.SearchByTextAsync(currentSearchQuery, 10);
                     finalResults.AddRange(books);
-                    Console.WriteLine($"[TextSearch] Найдено книг: {books.Count}");
                 }
             }
 

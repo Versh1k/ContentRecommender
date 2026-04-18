@@ -2,39 +2,38 @@
 using ContentRecommender.Core.Models;
 using ContentRecommender.Core.Services;
 using ContentRecommender.Data.Repositories;
-using System.Text.Json;
-using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
 
 namespace ContentRecommender.Web.Services;
 
 public class ContentDetailService : IContentDetailService
 {
     private readonly IMovieDetailService _movieDetail;
-    private readonly GoogleBooksConfig _googleBooksConfig;
-    private readonly IFavoritesRepository _favoritesRepository;
-    private readonly HttpClient _http;
+    private readonly IBookDetailService _bookDetail;
+    private readonly IFavoritesRepository _favorites;
+    private readonly MovieApiOptions _movieOptions;
+    private readonly BookApiOptions _bookOptions;
 
-    public ContentDetailService(
-        IMovieDetailService movieDetail,
-        GoogleBooksConfig googleBooksConfig,
-        IFavoritesRepository favoritesRepository,
-        HttpClient http)
+    public ContentDetailService(IMovieDetailService movieDetail,
+                                IBookDetailService bookDetail,
+                                IFavoritesRepository favorites,
+                                IOptions<MovieApiOptions> movieOptions,
+                                IOptions<BookApiOptions> bookOptions)
     {
         _movieDetail = movieDetail;
-        _googleBooksConfig = googleBooksConfig;
-        _favoritesRepository = favoritesRepository;
-        _http = http;
-
-        // Заголовок для Kinopoisk API (используется и в GenericMovieDetailService, но для старого кода книг не нужен)
-        // Оставим на случай прямых вызовов, но лучше перенести в IMovieDetailService
+        _bookDetail = bookDetail;
+        _favorites = favorites;
+        _movieOptions = movieOptions.Value;
+        _bookOptions = bookOptions.Value;
     }
 
     public async Task<ContentDetailDto?> GetContentDetailsAsync(string source, string externalId, string? userId = null)
     {
-        if (source.Equals("kinopoisk", StringComparison.OrdinalIgnoreCase))
+        if (source == _movieOptions.ActiveProvider)
         {
             var movie = await _movieDetail.GetMovieDetailsAsync(externalId);
             if (movie == null) return null;
+
             return new ContentDetailDto
             {
                 ExternalId = movie.ExternalId,
@@ -49,26 +48,47 @@ public class ContentDetailService : IContentDetailService
                 DurationMinutes = movie.DurationMinutes,
                 Director = movie.Director,
                 Actors = movie.Actors,
+                Trailers = movie.Trailers?.Select(v => new TrailerDto
+                { Title = v.Title, YouTubeId = v.YouTubeId }).ToList(),
                 IsFavorite = !string.IsNullOrEmpty(userId) &&
-                    await _favoritesRepository.IsFavoriteAsync(userId, externalId, "Kinopoisk")
+                    await _favorites.IsFavoriteAsync(userId, externalId, movie.Source)
             };
         }
-        else if (source.Equals("googlebooks", StringComparison.OrdinalIgnoreCase))
+        else if (source == _bookOptions.ActiveProvider)
         {
-            return await GetBookDetailsAsync(externalId, userId);
+            var book = await _bookDetail.GetBookDetailsAsync(externalId);
+            if (book == null) return null;
+
+            return new ContentDetailDto
+            {
+                ExternalId = book.ExternalId,
+                Source = book.Source,
+                Format = ContentFormat.Book,
+                Title = book.Title,
+                Description = book.Description,
+                CoverUrl = book.CoverUrl,
+                Year = book.Year,
+                Rating = book.Rating,
+                Genres = book.Genres,
+                Author = book.Author,
+                Pages = book.Pages,
+                IsFavorite = !string.IsNullOrEmpty(userId) &&
+                    await _favorites.IsFavoriteAsync(userId, externalId, book.Source)
+            };
         }
+
         return null;
     }
 
     public async Task<List<ContentDetailDto>> GetSimilarContentAsync(string source, string externalId, int limit = 6)
     {
-        if (source.Equals("kinopoisk", StringComparison.OrdinalIgnoreCase))
+        if (source == _movieOptions.ActiveProvider)
         {
             var similar = await _movieDetail.GetSimilarMoviesAsync(externalId, limit);
             return similar.Select(s => new ContentDetailDto
             {
                 ExternalId = s.ExternalId,
-                Source = "Kinopoisk",
+                Source = source,
                 Title = s.Title,
                 CoverUrl = s.CoverUrl,
                 Year = s.Year,
@@ -76,68 +96,7 @@ public class ContentDetailService : IContentDetailService
                 Format = s.Format
             }).ToList();
         }
+
         return new List<ContentDetailDto>();
-    }
-
-    // ========== Старая реализация для книг (временно) ==========
-    private async Task<ContentDetailDto?> GetBookDetailsAsync(string externalId, string? userId = null)
-    {
-        try
-        {
-            var url = $"{_googleBooksConfig.BaseUrl}/{externalId}";
-            var response = await _http.GetAsync(url);
-            if (!response.IsSuccessStatusCode) return null;
-
-            var json = await response.Content.ReadAsStringAsync();
-            var bookData = JsonSerializer.Deserialize<GoogleBookDto>(json);
-            if (bookData?.volumeInfo == null) return null;
-
-            bool isFavorite = !string.IsNullOrEmpty(userId) &&
-                await _favoritesRepository.IsFavoriteAsync(userId, externalId, "GoogleBooks");
-
-            return new ContentDetailDto
-            {
-                ExternalId = externalId,
-                Source = "GoogleBooks",
-                Format = ContentFormat.Book,
-                Title = bookData.volumeInfo.title ?? "Без названия",
-                Description = bookData.volumeInfo.description,
-                CoverUrl = bookData.volumeInfo.imageLinks?.thumbnail ?? bookData.volumeInfo.imageLinks?.smallThumbnail,
-                Year = int.TryParse(bookData.volumeInfo.publishedDate?.Substring(0, 4), out var year) ? year : null,
-                Rating = bookData.volumeInfo.averageRating ?? 0,
-                Genres = bookData.volumeInfo.categories?.Where(c => !string.IsNullOrEmpty(c)).ToList(),
-                Author = bookData.volumeInfo.authors?.FirstOrDefault(),
-                Pages = bookData.volumeInfo.pageCount,
-                IsFavorite = isFavorite
-            };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    // Вспомогательные классы для десериализации Google Books
-    private class GoogleBookDto
-    {
-        public VolumeInfo? volumeInfo { get; set; }
-    }
-
-    private class VolumeInfo
-    {
-        public string? title { get; set; }
-        public string? description { get; set; }
-        public string? publishedDate { get; set; }
-        public double? averageRating { get; set; }
-        public List<string>? categories { get; set; }
-        public List<string>? authors { get; set; }
-        public int? pageCount { get; set; }
-        public ImageLinks? imageLinks { get; set; }
-    }
-
-    private class ImageLinks
-    {
-        public string? thumbnail { get; set; }
-        public string? smallThumbnail { get; set; }
     }
 }

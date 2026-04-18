@@ -1,68 +1,58 @@
 ﻿using ContentRecommender.Core.Configuration;
+using ContentRecommender.Core.Helpers;
 using ContentRecommender.Core.Models;
 using ContentRecommender.Core.Services;
 using Microsoft.Extensions.Options;
-using ContentRecommender.Core.Helpers;
 
 namespace ContentRecommender.Web.Services.MovieSearch;
 
 public class GenericMovieSearchService : IMovieSearchService
 {
     private readonly HttpClient _http;
-    private readonly ApiAdapterConfig _config;
+    private readonly MovieApiOptions _options;
     private readonly IMovieApiUrlBuilder _urlBuilder;
     private readonly IMovieApiResponseParser _parser;
     private readonly IGenreMapper _genreMapper;
     private readonly Random _rnd = new();
 
-    public GenericMovieSearchService(
-        HttpClient http,
-        IOptions<ApiAdapterConfig> options,
-        IMovieApiUrlBuilder urlBuilder,
-        IMovieApiResponseParser parser,
-        IGenreMapper genreMapper)
+    public GenericMovieSearchService(HttpClient http,
+                                     IOptions<MovieApiOptions> options,
+                                     IMovieApiUrlBuilder urlBuilder,
+                                     IMovieApiResponseParser parser,
+                                     IGenreMapper genreMapper)
     {
         _http = http;
-        _config = options.Value;
+        _options = options.Value;
         _urlBuilder = urlBuilder;
         _parser = parser;
         _genreMapper = genreMapper;
-
-        var current = _config.Providers[_config.ActiveProvider];
-        _http.BaseAddress = new Uri(current.BaseUrl);
-        if (!_http.DefaultRequestHeaders.Contains(current.ApiKeyHeader))
-            _http.DefaultRequestHeaders.Add(current.ApiKeyHeader, current.ApiKey);
     }
 
-    private ProviderConfig Current => _config.Providers[_config.ActiveProvider];
+    private ProviderConfig Current => _options.Providers[_options.ActiveProvider];
 
     public async Task<List<Movie>> SearchByGenresAsync(List<string> genres, ContentTypeCategory type, int limit = 15, Guid? seed = null)
     {
         var random = seed.HasValue ? new Random(seed.Value.GetHashCode()) : _rnd;
         var movies = new List<Movie>();
 
-        var genreIds = genres
-            .Select(g => _genreMapper.GetGenreId(g))
-            .Where(id => id.HasValue)
-            .Select(id => id.Value)
+        var genreParams = genres
+            .Select(g => _genreMapper.GetGenreParameter(g, ContentFormat.Movie))
+            .Where(p => !string.IsNullOrEmpty(p))
             .Distinct()
             .ToList();
 
-        if (!genreIds.Any())
-            genreIds.Add(_genreMapper.GetRandomGenreIdForType(type, random));
+        if (!genreParams.Any())
+        {
+            // fallback
+            genreParams.Add("1");
+        }
 
-        foreach (var genreId in genreIds)
+        foreach (var genreParam in genreParams)
         {
             if (movies.Count >= limit) break;
-
-            var url = _urlBuilder.BuildSearchUrl(genreId: genreId);
+            var url = _urlBuilder.BuildSearchUrl(genreId: int.TryParse(genreParam, out var id) ? id : null);
             var fetched = await FetchPage(url, type, limit - movies.Count, random);
-            Console.WriteLine($"[MovieSearch] Жанр {genreId}: получили {fetched.Count} фильмов");
-
-            //movies.AddRange(fetched.Where(m => !movies.Any(x => x.ExternalId == m.ExternalId)));
-            movies.AddRange(fetched);
-
-            Console.WriteLine($"[MovieSearch] Всего после жанра {genreId}: {movies.Count} уникальных фильмов");
+            movies.AddRange(fetched.Where(m => !movies.Any(x => x.ExternalId == m.ExternalId)));
         }
 
         return movies.OrderByDescending(m => m.Rating ?? 0).Take(limit).ToList();
@@ -95,12 +85,10 @@ public class GenericMovieSearchService : IMovieSearchService
             return new();
         }
     }
-    public async Task<List<Movie>> SearchMoviesAsync(SearchCriteria criteria)
+
+    public Task<List<Movie>> SearchMoviesAsync(SearchCriteria criteria)
     {
         var type = ContentTypeMapper.MapToCategory(criteria.SelectedContentType);
-        var genres = criteria.Genres?.Any() == true
-            ? criteria.Genres
-            : new List<string>();
-        return await SearchByGenresAsync(genres, type, 15, criteria.RandomSeed);
+        return SearchByGenresAsync(criteria.Genres ?? new(), type, 15, criteria.RandomSeed);
     }
 }

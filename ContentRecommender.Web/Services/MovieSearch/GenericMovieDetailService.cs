@@ -3,7 +3,6 @@ using ContentRecommender.Core.Models;
 using ContentRecommender.Core.Services;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace ContentRecommender.Web.Services.MovieSearch;
@@ -11,15 +10,16 @@ namespace ContentRecommender.Web.Services.MovieSearch;
 public class GenericMovieDetailService : IMovieDetailService
 {
     private readonly HttpClient _http;
-    private readonly ApiAdapterConfig _config;
+    private readonly MovieApiOptions _options;
 
-    public GenericMovieDetailService(HttpClient http, IOptions<ApiAdapterConfig> options)
+    public GenericMovieDetailService(HttpClient http,
+                                     IOptions<MovieApiOptions> options)
     {
         _http = http;
-        _config = options.Value;
+        _options = options.Value;
     }
 
-    private ProviderConfig Current => _config.Providers[_config.ActiveProvider];
+    private ProviderConfig Current => _options.Providers[_options.ActiveProvider];
     private FieldMapping Fm => Current.FieldMapping;
 
     public async Task<MovieDetailDto?> GetMovieDetailsAsync(string externalId)
@@ -30,12 +30,12 @@ public class GenericMovieDetailService : IMovieDetailService
 
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
-
         var root = doc.RootElement;
+
         return new MovieDetailDto
         {
             ExternalId = externalId,
-            Source = _config.ActiveProvider,
+            Source = _options.ActiveProvider,
             Title = GetString(root, Fm.Title) ?? GetString(root, Fm.TitleFallback) ?? "Без названия",
             Description = GetString(root, Fm.Description),
             Year = GetInt32(root, Fm.Year),
@@ -57,7 +57,7 @@ public class GenericMovieDetailService : IMovieDetailService
         if (!response.IsSuccessStatusCode) return new();
 
         var json = await response.Content.ReadAsStringAsync();
-        var data = JsonSerializer.Deserialize<KinopoiskVideosDto>(json); // временно используем DTO Kinopoisk
+        var data = JsonSerializer.Deserialize<KinopoiskVideosDto>(json);
         return data?.items
             ?.Where(v => v.site?.Contains("youtube", StringComparison.OrdinalIgnoreCase) == true)
             ?.Select(v => new VideoDto
@@ -88,26 +88,30 @@ public class GenericMovieDetailService : IMovieDetailService
         }).ToList() ?? new();
     }
 
-    private string? GetString(JsonElement element, string path) =>
-        TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.String ? val.GetString() : null;
-
-    private int? GetInt32(JsonElement element, string path) =>
-        TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.Number ? val.GetInt32() : null;
-
-    private double? GetDouble(JsonElement element, string path) =>
-        TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.Number ? val.GetDouble() : null;
-
-    private bool TryGetProperty(JsonElement element, string path, out JsonElement value)
+    // ---------- Вспомогательные методы ----------
+    private static bool TryGetProperty(JsonElement element, string path, out JsonElement value)
     {
         value = default;
         if (string.IsNullOrEmpty(path)) return false;
         var parts = path.Split('.');
         var current = element;
         foreach (var part in parts)
-            if (!current.TryGetProperty(part, out current)) return false;
+        {
+            if (!current.TryGetProperty(part, out current))
+                return false;
+        }
         value = current;
         return true;
     }
+
+    private static string? GetString(JsonElement element, string path)
+        => TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.String ? val.GetString() : null;
+
+    private static int? GetInt32(JsonElement element, string path)
+        => TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.Number && val.TryGetInt32(out var n) ? n : null;
+
+    private static double? GetDouble(JsonElement element, string path)
+        => TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.Number && val.TryGetDouble(out var d) ? d : null;
 
     private List<string> GetGenres(JsonElement root)
     {
@@ -130,9 +134,9 @@ public class GenericMovieDetailService : IMovieDetailService
 
     private IEnumerable<string> GetActors(JsonElement root)
     {
-        if (TryGetProperty(root, "actors", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        if (TryGetProperty(root, Fm.Actors, out var arr) && arr.ValueKind == JsonValueKind.Array)
             foreach (var a in arr.EnumerateArray())
-                if (TryGetProperty(a, "name", out var name) && name.ValueKind == JsonValueKind.String)
+                if (TryGetProperty(a, Fm.ActorName, out var name) && name.ValueKind == JsonValueKind.String)
                     yield return name.GetString()!;
     }
 

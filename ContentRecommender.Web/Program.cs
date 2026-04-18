@@ -6,28 +6,22 @@ using ContentRecommender.Data.Repositories;
 using ContentRecommender.Web.Components;
 using ContentRecommender.Web.ML.Services;
 using ContentRecommender.Web.Services;
+using ContentRecommender.Web.Services.BookSearch;
 using ContentRecommender.Web.Services.MovieSearch;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.ML;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Добавляем сервисы Blazor
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
-
+builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddControllers();
+builder.Services.AddRazorPages().AddRazorRuntimeCompilation();
 
-// Добавляем поддержку Razor Pages (для аутентификации)
-builder.Services.AddRazorPages()
-    .AddRazorRuntimeCompilation();
-
-// База данных
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Identity
 builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
 {
     options.Password.RequireDigit = true;
@@ -40,7 +34,6 @@ builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<AppDbContext>()
 .AddDefaultTokenProviders();
 
-// Настройка cookie
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.HttpOnly = true;
@@ -51,67 +44,86 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.SlidingExpiration = true;
 });
 
-// Добавляем аутентификацию и авторизацию
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 
-// Загружаем конфигурации
-var googleBooksConfig = builder.Configuration.GetSection("GoogleBooks").Get<GoogleBooksConfig>()
-    ?? throw new InvalidOperationException("GoogleBooks configuration is missing");
 var cacheSettings = builder.Configuration.GetSection("CacheSettings").Get<CacheSettings>()
     ?? new CacheSettings { DurationDays = 7, MaxItemsPerCategory = 15 };
-
-// Оставляем синглтоны для Google Books и кэша (пока)
-builder.Services.AddSingleton(googleBooksConfig);
 builder.Services.AddSingleton(cacheSettings);
 
-// Репозитории
 builder.Services.AddScoped<IFavoritesRepository, FavoritesRepository>();
 
-// HTTP клиент для Google Books (старый, потом заменим)
-builder.Services.AddHttpClient<GoogleBooksService>((sp, client) =>
-{
-    var config = sp.GetRequiredService<GoogleBooksConfig>();
-    client.BaseAddress = new Uri(config.BaseUrl ?? "https://www.googleapis.com/books/v1/volumes");
-});
-
-// ML Context
 builder.Services.AddSingleton<MLContext>();
 builder.Services.AddScoped<IMoodAnalysisService, MoodAnalysisService>();
 
-// Другие сервисы
 builder.Services.AddScoped<ContentSearchService>();
 builder.Services.AddScoped<IFavoritesService, FavoritesService>();
 builder.Services.AddScoped<ISearchStateService, SearchStateService>();
 
-// Кэш
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IContentCacheService, ContentCacheService>();
 
+// Регистрация конфигураций через IOptions
+builder.Services.Configure<MovieApiOptions>(builder.Configuration.GetSection("MovieApi"));
+builder.Services.Configure<BookApiOptions>(builder.Configuration.GetSection("BookApi"));
 
-// Конфигурация API (MovieApi секция в appsettings.json)
-builder.Services.Configure<ApiAdapterConfig>(builder.Configuration.GetSection("MovieApi"));
+// Фильмы
+builder.Services.AddHttpClient<IMovieSearchService, GenericMovieSearchService>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<MovieApiOptions>>().Value;
+    var provider = options.Providers[options.ActiveProvider];
+    client.BaseAddress = new Uri(provider.BaseUrl);
+    if (!string.IsNullOrEmpty(provider.ApiKeyHeader) && !string.IsNullOrEmpty(provider.ApiKey))
+        client.DefaultRequestHeaders.Add(provider.ApiKeyHeader, provider.ApiKey);
+});
 
-// ML маппер настроений в жанры
-builder.Services.AddScoped<IMlGenreMapper, MlMoodToGenresMapper>();
+builder.Services.AddHttpClient<IMovieDetailService, GenericMovieDetailService>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<MovieApiOptions>>().Value;
+    var provider = options.Providers[options.ActiveProvider];
+    client.BaseAddress = new Uri(provider.BaseUrl);
+    if (!string.IsNullOrEmpty(provider.ApiKeyHeader) && !string.IsNullOrEmpty(provider.ApiKey))
+        client.DefaultRequestHeaders.Add(provider.ApiKeyHeader, provider.ApiKey);
+});
 
-// Компоненты универсального поиска
-builder.Services.AddScoped<IGenreMapper, GenreMapper>();
+// Книги
+builder.Services.AddHttpClient<IBookSearchService, GenericBookSearchService>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<BookApiOptions>>().Value;
+
+    // Безопасное получение провайдера
+    if (options.Providers == null || !options.Providers.TryGetValue(options.ActiveProvider, out var provider))
+    {
+        // Fallback: создаём минимальный провайдер или кидаем понятную ошибку
+        throw new InvalidOperationException(
+            $"Provider '{options.ActiveProvider}' not found in BookApi.Providers. " +
+            $"Available: {(options.Providers != null ? string.Join(", ", options.Providers.Keys) : "null")}");
+    }
+
+    client.BaseAddress = new Uri(provider.BaseUrl);
+});
+
+builder.Services.AddHttpClient<IBookDetailService, GenericBookDetailService>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<BookApiOptions>>().Value;
+    var provider = options.Providers[options.ActiveProvider];
+    client.BaseAddress = new Uri(provider.BaseUrl);
+});
+
+// Компоненты
 builder.Services.AddScoped<IMovieApiUrlBuilder, MovieApiUrlBuilder>();
 builder.Services.AddScoped<IMovieCategoryResolver, MovieCategoryResolver>();
 builder.Services.AddScoped<IMovieApiResponseParser, ConfigurableJsonParser>();
+builder.Services.AddScoped<IBookResponseParser, ConfigurableBookParser>();
 
-builder.Services.AddHttpClient<IMovieDetailService, GenericMovieDetailService>();
+builder.Services.AddScoped<IGenreMapper, GenreMapper>();
+builder.Services.AddScoped<IMlGenreMapper, MlMoodToGenresMapper>();
 
-// ContentDetailService
 builder.Services.AddScoped<IContentDetailService, ContentDetailService>();
-// Основной сервис поиска фильмов
-builder.Services.AddHttpClient<IMovieSearchService, GenericMovieSearchService>();
 
 var app = builder.Build();
 
-// Настройка конвейера HTTP-запросов
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
@@ -124,19 +136,14 @@ else
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.UseAntiforgery();
 
-// Маршруты
 app.MapRazorPages();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 app.MapControllers();
 
-// Применяем миграции
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();

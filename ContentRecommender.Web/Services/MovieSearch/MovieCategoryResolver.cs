@@ -7,29 +7,22 @@ namespace ContentRecommender.Web.Services.MovieSearch;
 
 public class MovieCategoryResolver : IMovieCategoryResolver
 {
-    private readonly ApiAdapterConfig _config;
+    private readonly MovieApiOptions _options;
 
-    public MovieCategoryResolver(IOptions<ApiAdapterConfig> options)
+    public MovieCategoryResolver(IOptions<MovieApiOptions> options)
     {
-        _config = options.Value;
+        _options = options.Value;
     }
 
-    private ProviderConfig Current => _config.Providers[_config.ActiveProvider];
+    private ProviderConfig Current => _options.Providers[_options.ActiveProvider];
 
     public ContentTypeCategory DetermineCategory(string? type, IEnumerable<string>? genres, int? duration)
     {
-        if (!string.IsNullOrEmpty(type) && Current.TypeMapping.TryGetValue(type, out var category))
-            return category;
-
-        var genreList = genres?.ToList() ?? new();
-        if (genreList.Any(g => g.Contains("аниме", StringComparison.OrdinalIgnoreCase) ||
-                               g.Contains("anime", StringComparison.OrdinalIgnoreCase)))
-            return ContentTypeCategory.Cartoon;
-        if (genreList.Any(g => g.Contains("мульт", StringComparison.OrdinalIgnoreCase) ||
-                               g.Contains("cartoon", StringComparison.OrdinalIgnoreCase)))
-            return ContentTypeCategory.Cartoon;
-        if (duration.HasValue && duration < 45)
-            return ContentTypeCategory.ShortFilm;
+        if (!string.IsNullOrEmpty(type) && Current.TypeMapping.TryGetValue(type, out var categoryStr))
+        {
+            if (Enum.TryParse<ContentTypeCategory>(categoryStr, out var category))
+                return category;
+        }
 
         return ContentTypeCategory.FeatureFilm;
     }
