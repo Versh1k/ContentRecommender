@@ -33,7 +33,7 @@ public class GenericMovieSearchService : IMovieSearchService
     public async Task<List<Movie>> SearchByGenresAsync(List<string> genres, ContentTypeCategory type, int limit = 15, Guid? seed = null)
     {
         var random = seed.HasValue ? new Random(seed.Value.GetHashCode()) : _rnd;
-        var movies = new List<Movie>();
+        var allMovies = new List<Movie>();
 
         var genreParams = genres
             .Select(g => _genreMapper.GetGenreParameter(g, ContentFormat.Movie))
@@ -42,20 +42,20 @@ public class GenericMovieSearchService : IMovieSearchService
             .ToList();
 
         if (!genreParams.Any())
-        {
-            // fallback
             genreParams.Add("1");
-        }
 
         foreach (var genreParam in genreParams)
         {
-            if (movies.Count >= limit) break;
             var url = _urlBuilder.BuildSearchUrl(genreId: int.TryParse(genreParam, out var id) ? id : null);
-            var fetched = await FetchPage(url, type, limit - movies.Count, random);
-            movies.AddRange(fetched.Where(m => !movies.Any(x => x.ExternalId == m.ExternalId)));
+            var fetched = await FetchPage(url, type, limit * 2, random);
+            foreach (var movie in fetched)
+            {
+                if (!allMovies.Any(m => m.ExternalId == movie.ExternalId))
+                    allMovies.Add(movie);
+            }
         }
 
-        return movies.OrderByDescending(m => m.Rating ?? 0).Take(limit).ToList();
+        return allMovies.OrderByDescending(m => m.Rating ?? 0).Take(limit).ToList();
     }
 
     public async Task<List<Movie>> SearchByTextAsync(string query, ContentTypeCategory type, int limit = 15, Guid? seed = null)
@@ -63,13 +63,14 @@ public class GenericMovieSearchService : IMovieSearchService
         if (string.IsNullOrWhiteSpace(query)) return new();
         var random = seed.HasValue ? new Random(seed.Value.GetHashCode()) : _rnd;
         var url = _urlBuilder.BuildSearchUrl(keyword: query);
-        return await FetchPage(url, type, limit, random);
+        return await FetchPage(url, type, limit * 2, random).ContinueWith(t => t.Result.Take(limit).ToList());
     }
 
     private async Task<List<Movie>> FetchPage(string url, ContentTypeCategory targetType, int limit, Random random)
     {
         try
         {
+
             var separator = url.Contains('?') ? '&' : '?';
             url += $"{separator}page={random.Next(1, 4)}";
 
@@ -77,6 +78,7 @@ public class GenericMovieSearchService : IMovieSearchService
             if (!response.IsSuccessStatusCode) return new();
 
             var json = await response.Content.ReadAsStringAsync();
+
             return _parser.Parse(json, targetType).Take(limit).ToList();
         }
         catch (Exception ex)

@@ -24,9 +24,15 @@ public class GenericMovieDetailService : IMovieDetailService
 
     public async Task<MovieDetailDto?> GetMovieDetailsAsync(string externalId)
     {
+        Console.WriteLine($"[MovieDetail] Fetching details for ExternalId: '{externalId}'");
         var url = $"{Current.BaseUrl}/{externalId}";
         var response = await _http.GetAsync(url);
-        if (!response.IsSuccessStatusCode) return null;
+
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.WriteLine($"[MovieDetail] API error {response.StatusCode} for ID '{externalId}'");
+            return null;
+        }
 
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);

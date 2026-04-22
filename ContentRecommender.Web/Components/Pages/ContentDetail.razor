@@ -174,16 +174,24 @@ else
         try
         {
             isLoading = true;
+            Console.WriteLine($"[Detail] Loading: Source='{Source}', Id='{Id}'");
+
             content = await DetailService.GetContentDetailsAsync(Source, Id);
-            if (content != null)
+
+            if (content == null)
             {
+                Console.WriteLine($"[Detail] Content not found for Source='{Source}', Id='{Id}'");
+            }
+            else
+            {
+                Console.WriteLine($"[Detail] Loaded: {content.Title}");
                 content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, 6);
                 content.IsFavorite = await FavoritesService.IsFavoriteAsync(content.ExternalId, content.Source);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Ошибка загрузки: {ex.Message}");
+            Console.WriteLine($"[Detail] Error: {ex.Message}");
             content = null;
         }
         finally

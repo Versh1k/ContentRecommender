@@ -1,6 +1,11 @@
 ﻿@using ContentRecommender.Core.Models
+@using ContentRecommender.Core.Configuration
+@using Microsoft.Extensions.Options
+
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject IOptions<MovieApiOptions> MovieOptions
+@inject IOptions<BookApiOptions> BookOptions
 
 @if (Item != null)
 {
@@ -118,7 +123,12 @@ else
     {
         if (Item != null && !string.IsNullOrEmpty(Item.Source) && !string.IsNullOrEmpty(Item.ExternalId))
         {
+            Console.WriteLine($"[ContentCard] Navigating to /content/{Item.Source.ToLower()}/{Item.ExternalId}");
             Navigation.NavigateTo($"/content/{Item.Source.ToLower()}/{Item.ExternalId}");
+        }
+        else
+        {
+            Console.WriteLine($"[ContentCard] Cannot navigate: Source='{Item?.Source}', ExternalId='{Item?.ExternalId}'");
         }
     }
 
@@ -139,22 +149,20 @@ else
     {
         if (Item == null) return;
 
-        string url = Item.Source?.ToLower() switch
-        {
-            "kinopoisk" => $"https://www.kinopoisk.ru/film/{Item.ExternalId}/",
-            "googlebooks" => $"https://www.google.com/books/edition/-/{Item.ExternalId}",
-            _ => Item.Source?.ToLower() == "googlebooks"
-                ? $"https://books.google.com/books?id={Item.ExternalId}"
-                : "https://www.kinopoisk.ru/"
-        };
-        await JSRuntime.InvokeVoidAsync("open", url, "_blank");
-    }
+        string externalId = Item.ExternalId ?? "";
 
-    private string TruncateDescription(string description, int maxLength)
-    {
-        if (string.IsNullOrEmpty(description)) return "Описание отсутствует";
-        if (description.Length <= maxLength) return description;
-        return description.Substring(0, maxLength) + "...";
+        if (Item.Source == MovieOptions.Value.ActiveProvider)
+        {
+            var provider = MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider];
+            var uri = new Uri(provider.BaseUrl);
+            string kinopoiskBase = $"{uri.Scheme}://{uri.Host}";
+            await JSRuntime.InvokeVoidAsync("open", $"{kinopoiskBase}/film/{externalId}/", "_blank");
+        }
+        else if (Item.Source == BookOptions.Value.ActiveProvider)
+        {
+            var provider = BookOptions.Value.Providers[BookOptions.Value.ActiveProvider];
+            await JSRuntime.InvokeVoidAsync("open", $"{provider.BaseUrl}/{externalId}", "_blank");
+        }
     }
 
     private string GetMoodClass(MoodType? mood)
@@ -182,6 +190,6 @@ else
         if (Item is Book book && !string.IsNullOrWhiteSpace(book.Author))
             return book.Author;
 
-        return null;  // ✅ Не показываем "Неизвестен"
+        return null;
     }
 }

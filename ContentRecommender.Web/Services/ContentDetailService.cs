@@ -29,7 +29,7 @@ public class ContentDetailService : IContentDetailService
 
     public async Task<ContentDetailDto?> GetContentDetailsAsync(string source, string externalId, string? userId = null)
     {
-        if (source == _movieOptions.ActiveProvider)
+        if (source.Equals(_movieOptions.ActiveProvider, StringComparison.OrdinalIgnoreCase))
         {
             var movie = await _movieDetail.GetMovieDetailsAsync(externalId);
             if (movie == null) return null;
@@ -54,7 +54,7 @@ public class ContentDetailService : IContentDetailService
                     await _favorites.IsFavoriteAsync(userId, externalId, movie.Source)
             };
         }
-        else if (source == _bookOptions.ActiveProvider)
+        else if (source.Equals(_bookOptions.ActiveProvider, StringComparison.OrdinalIgnoreCase))
         {
             var book = await _bookDetail.GetBookDetailsAsync(externalId);
             if (book == null) return null;
@@ -82,7 +82,7 @@ public class ContentDetailService : IContentDetailService
 
     public async Task<List<ContentDetailDto>> GetSimilarContentAsync(string source, string externalId, int limit = 6)
     {
-        if (source == _movieOptions.ActiveProvider)
+        if (source.Equals(_movieOptions.ActiveProvider, StringComparison.OrdinalIgnoreCase))
         {
             var similar = await _movieDetail.GetSimilarMoviesAsync(externalId, limit);
             return similar.Select(s => new ContentDetailDto

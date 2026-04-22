@@ -28,24 +28,53 @@ public class ConfigurableJsonParser : IMovieApiResponseParser
 
         if (!JsonParserHelper.TryGetProperty(doc.RootElement, Fm.RootArray, out var rootArray) ||
             rootArray.ValueKind != JsonValueKind.Array)
+        {
+            Console.WriteLine($"[ConfigurableJsonParser] RootArray '{Fm.RootArray}' not found or not an array");
             return movies;
+        }
+
+        Console.WriteLine($"[ConfigurableJsonParser] Total items from API: {rootArray.GetArrayLength()}");
+
 
         foreach (var item in rootArray.EnumerateArray())
         {
             var movie = MapToMovie(item);
-            if (movie.Category != targetType) continue;
-            if ((movie.Rating ?? 0) < Current.DefaultRatingFrom) continue;
-            if (string.IsNullOrEmpty(movie.CoverUrl)) continue;
+
+            // Логируем причины отсева
+            //if (movie.Category != targetType)
+            //{
+            //    Console.WriteLine($"[ConfigurableJsonParser] Skipped '{movie.Title}' — category {movie.Category} != {targetType}");
+            //    continue;
+            //}
+            if ((movie.Rating ?? 0) < Current.DefaultRatingFrom)
+            {
+                Console.WriteLine($"[ConfigurableJsonParser] Skipped '{movie.Title}' — rating {movie.Rating} < {Current.DefaultRatingFrom}");
+                continue;
+            }
+            if (string.IsNullOrEmpty(movie.CoverUrl))
+            {
+                Console.WriteLine($"[ConfigurableJsonParser] Skipped '{movie.Title}' — no cover");
+                continue;
+            }
 
             movies.Add(movie);
         }
+
+        Console.WriteLine($"[ConfigurableJsonParser] Passed filters: {movies.Count}");
         return movies;
     }
 
     private Movie MapToMovie(JsonElement item)
     {
-        string externalId = JsonParserHelper.GetString(item, Fm.Id) ?? "";
-        string title = JsonParserHelper.GetString(item, Fm.Title) ?? JsonParserHelper.GetString(item, Fm.TitleFallback) ?? "Без названия";
+        string externalId = JsonParserHelper.GetString(item, Fm.Id)
+                    ?? JsonParserHelper.GetString(item, "kinopoiskId")  // явный запасной вариант
+                    ?? Guid.NewGuid().ToString();
+
+        string title = JsonParserHelper.GetString(item, Fm.Title)
+                    ?? JsonParserHelper.GetString(item, Fm.TitleFallback)
+                    ?? JsonParserHelper.GetString(item, "nameOriginal")
+                    ?? "Без названия";
+
         int? year = JsonParserHelper.GetInt32(item, Fm.Year);
         double? rating = JsonParserHelper.GetDouble(item, Fm.Rating);
         string? description = JsonParserHelper.GetString(item, Fm.Description);
@@ -53,6 +82,7 @@ public class ConfigurableJsonParser : IMovieApiResponseParser
         string? poster = JsonParserHelper.GetString(item, Fm.PosterUrl);
         string? type = JsonParserHelper.GetString(item, Fm.Type);
 
+        Console.WriteLine($"[Parser] Extracted ExternalId: '{externalId}' for movie '{title}'");
         var genres = new List<string>();
         if (JsonParserHelper.TryGetProperty(item, Fm.Genres, out var genresElem) && genresElem.ValueKind == JsonValueKind.Array)
             foreach (var g in genresElem.EnumerateArray())
@@ -69,6 +99,8 @@ public class ConfigurableJsonParser : IMovieApiResponseParser
                 }
 
         var category = _categoryResolver.DetermineCategory(type, genres, duration);
+
+        Console.WriteLine($"[Parser] Extracted ExternalId: '{externalId}' for movie '{title}'");
 
         return new Movie
         {

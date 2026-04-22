@@ -72,17 +72,27 @@ public class GenericBookSearchService : IBookSearchService
 
     private async Task<List<Book>> FetchPage(string url, int limit)
     {
-        try
+        int maxRetries = 3;
+        for (int i = 0; i < maxRetries; i++)
         {
-            var response = await _http.GetAsync(url);
-            if (!response.IsSuccessStatusCode) return new();
-            var json = await response.Content.ReadAsStringAsync();
-            return _parser.Parse(json).Take(limit).ToList();
+            try
+            {
+                var response = await _http.GetAsync(url);
+                if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+                {
+                    await Task.Delay(1000 * (i + 1));
+                    continue;
+                }
+                if (!response.IsSuccessStatusCode) return new();
+                var json = await response.Content.ReadAsStringAsync();
+                return _parser.Parse(json).Take(limit).ToList();
+            }
+            catch
+            {
+                if (i == maxRetries - 1) return new();
+                await Task.Delay(1000 * (i + 1));
+            }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[BookSearch] Ошибка: {ex.Message}");
-            return new();
-        }
+        return new();
     }
 }
