@@ -23,17 +23,25 @@ public class ConfigurableBookParser : IBookResponseParser
     {
         var books = new List<Book>();
         using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
 
-        if (!JsonParserHelper.TryGetProperty(doc.RootElement, Fm.RootArray, out var rootArray) ||
-            rootArray.ValueKind != JsonValueKind.Array)
-            return books;
-
-        foreach (var item in rootArray.EnumerateArray())
+        if (JsonParserHelper.TryGetProperty(root, Fm.RootArray, out var rootArray)
+            && rootArray.ValueKind == JsonValueKind.Array)
         {
-            var book = MapToBook(item);
-            if (IsValidBook(book))
+            foreach (var item in rootArray.EnumerateArray())
+            {
+                var book = MapToBook(item);
+                if (!string.IsNullOrEmpty(book.ExternalId) && !string.IsNullOrEmpty(book.Title))
+                    books.Add(book);
+            }
+        }
+        else if (!string.IsNullOrEmpty(Fm.RootArray))
+        {
+            var book = MapToBook(root);
+            if (!string.IsNullOrEmpty(book.ExternalId) && !string.IsNullOrEmpty(book.Title))
                 books.Add(book);
         }
+
         return books;
     }
 

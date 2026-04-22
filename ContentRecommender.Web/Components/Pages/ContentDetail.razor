@@ -2,11 +2,12 @@
 @using ContentRecommender.Core.Models
 @using ContentRecommender.Core.Services
 @using ContentRecommender.Web.Services
-
 @inject IContentDetailService DetailService
 @inject IFavoritesService FavoritesService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject Microsoft.Extensions.Options.IOptions<ContentRecommender.Core.Configuration.MovieApiOptions> MovieOptions
+@inject Microsoft.Extensions.Options.IOptions<ContentRecommender.Core.Configuration.BookApiOptions> BookOptions
 
 @if (isLoading)
 {
@@ -113,7 +114,7 @@ else
                 }
 
                 <div class="detail-buttons">
-                    <a href="@content.ExternalUrl" target="_blank" class="btn-external">
+                    <a href="@GetExternalUrl(content.Source, content.ExternalId)" target="_blank" class="btn-external">
                         @GetExternalButtonText(content.Source)
                     </a>
                 </div>
@@ -174,24 +175,16 @@ else
         try
         {
             isLoading = true;
-            Console.WriteLine($"[Detail] Loading: Source='{Source}', Id='{Id}'");
-
             content = await DetailService.GetContentDetailsAsync(Source, Id);
-
-            if (content == null)
+            if (content != null)
             {
-                Console.WriteLine($"[Detail] Content not found for Source='{Source}', Id='{Id}'");
-            }
-            else
-            {
-                Console.WriteLine($"[Detail] Loaded: {content.Title}");
                 content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, 6);
                 content.IsFavorite = await FavoritesService.IsFavoriteAsync(content.ExternalId, content.Source);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Detail] Error: {ex.Message}");
+            Console.WriteLine($"Ошибка загрузки: {ex.Message}");
             content = null;
         }
         finally
@@ -254,6 +247,75 @@ else
         Navigation.NavigateTo($"/content/{source.ToLower()}/{externalId}");
     }
 
+    // === АБСТРАКТНЫЕ МЕТОДЫ (без хардкода) ===
+
+    // Получаем текст кнопки из конфига или дефолт
+    private string GetExternalButtonText(string source)
+    {
+        var normalized = source.ToLowerInvariant();
+
+        // Проверяем через конфиг: какой провайдер активен для фильмов/книг
+        var movieProvider = MovieOptions.Value.ActiveProvider.ToLowerInvariant();
+        var bookProvider = BookOptions.Value.ActiveProvider.ToLowerInvariant();
+
+        if (normalized == movieProvider)
+        {
+            // Можно добавить в конфиг: "ButtonText": "Открыть на Кинопоиске"
+            // Пока дефолтное значение
+            return "Открыть в источнике";
+        }
+        else if (normalized == bookProvider)
+        {
+            return "Читать в источнике";
+        }
+
+        // Универсальный фоллбэк
+        return "Открыть";
+    }
+
+    // Строим внешний URL полностью из конфига
+    private string GetExternalUrl(string source, string externalId)
+    {
+        var normalized = source.ToLowerInvariant();
+        var movieProvider = MovieOptions.Value.ActiveProvider.ToLowerInvariant();
+        var bookProvider = BookOptions.Value.ActiveProvider.ToLowerInvariant();
+
+        if (normalized == movieProvider)
+        {
+            var provider = MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider];
+            // BaseUrl: https://kinopoiskapiunofficial.tech/api/v2.2/films
+            // Нужно превратить в: https://kinopoisk.ru/film/123456/
+            // Это можно настроить в конфиге через отдельное поле ExternalUrlTemplate
+            // Пока делаем простую эвристику:
+            if (provider.BaseUrl.Contains("kinopoisk"))
+                return $"https://kinopoisk.ru/film/{externalId}/";
+        }
+        else if (normalized == bookProvider)
+        {
+            var provider = BookOptions.Value.Providers[BookOptions.Value.ActiveProvider];
+            if (provider.BaseUrl.Contains("googleapis.com/books"))
+                return $"https://books.google.com/books?id={externalId}";
+        }
+
+        // Универсальный фоллбэк: просто открываем BaseUrl + ID
+        // Это можно улучшить, добавив в конфиг поле "ExternalUrlTemplate": "https://example.com/item/{id}"
+        return $"{GetProviderBaseUrl(source)}/{externalId}";
+    }
+
+    // Вспомогательный метод: получаем BaseUrl провайдера по source
+    private string GetProviderBaseUrl(string source)
+    {
+        var normalized = source.ToLowerInvariant();
+
+        if (normalized == MovieOptions.Value.ActiveProvider.ToLowerInvariant())
+            return MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider].BaseUrl;
+
+        if (normalized == BookOptions.Value.ActiveProvider.ToLowerInvariant())
+            return BookOptions.Value.Providers[BookOptions.Value.ActiveProvider].BaseUrl;
+
+        return "#";
+    }
+
     private string GetFormatIcon(ContentFormat format) => format switch
     {
         ContentFormat.Movie => "🎬",
@@ -261,12 +323,5 @@ else
         ContentFormat.Cartoon => "🎨",
         ContentFormat.Book => "📚",
         _ => "🎬"
-    };
-
-    private string GetExternalButtonText(string source) => source.ToLower() switch
-    {
-        "kinopoisk" => "Открыть на Кинопоиске",
-        "googlebooks" => "Читать на Google Books",
-        _ => "Открыть"
     };
 }

@@ -11,9 +11,7 @@ public static class JsonParserHelper
         if (string.IsNullOrEmpty(path)) return false;
 
         if (!path.Contains('.'))
-        {
             return element.TryGetProperty(path, out result);
-        }
 
         var parts = path.Split('.');
         JsonElement current = element;
@@ -34,9 +32,7 @@ public static class JsonParserHelper
     {
         if (string.IsNullOrEmpty(path)) return null;
         if (TryGetProperty(element, path, out var prop))
-        {
-            return ConvertJsonValueToString(prop);
-        }
+            return ConvertToJsonString(prop);
         return null;
     }
 
@@ -44,9 +40,7 @@ public static class JsonParserHelper
     {
         if (string.IsNullOrEmpty(path)) return null;
         if (TryGetProperty(element, path, out var prop) && prop.ValueKind == JsonValueKind.Number)
-        {
             return prop.TryGetInt32(out var val) ? val : null;
-        }
         return null;
     }
 
@@ -54,12 +48,10 @@ public static class JsonParserHelper
     {
         if (string.IsNullOrEmpty(path)) return null;
         if (TryGetProperty(element, path, out var prop) && prop.ValueKind == JsonValueKind.Number)
-        {
             return prop.TryGetDouble(out var val) ? val : null;
-        }
         return null;
     }
-    private static string? ConvertJsonValueToString(JsonElement element)
+    private static string? ConvertToJsonString(JsonElement element)
     {
         return element.ValueKind switch
         {
