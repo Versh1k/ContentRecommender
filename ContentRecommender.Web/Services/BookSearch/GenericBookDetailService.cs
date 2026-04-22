@@ -24,12 +24,17 @@ public class GenericBookDetailService : IBookDetailService
 
     public async Task<BookDetailDto?> GetBookDetailsAsync(string externalId)
     {
-        var url = $"{Current.BaseUrl}/{externalId}";
+        if (!Current.Urls.TryGetValue("GetDetails", out var detailsTemplate))
+            return null;
+
+        var url = $"{Current.BaseUrl}{detailsTemplate.Replace("{id}", externalId)}";
         var response = await _http.GetAsync(url);
         if (!response.IsSuccessStatusCode) return null;
+
         var json = await response.Content.ReadAsStringAsync();
         var book = _parser.Parse(json).FirstOrDefault();
         if (book == null) return null;
+
         return new BookDetailDto
         {
             ExternalId = book.ExternalId,
@@ -45,6 +50,37 @@ public class GenericBookDetailService : IBookDetailService
         };
     }
 
-    public Task<List<BookSummaryDto>> GetSimilarBooksAsync(string externalId, int limit = 6)
-        => Task.FromResult(new List<BookSummaryDto>());
+    public async Task<List<BookSummaryDto>> GetSimilarBooksAsync(string externalId, int limit = 6)
+    {
+        var book = await GetBookDetailsAsync(externalId);
+        if (book == null || !book.Genres.Any()) return new();
+
+        var genre = book.Genres.First();
+        var genreParam = Current.GenreParameters.GetValueOrDefault(genre.ToLower(), genre);
+        var query = $"subject:{Uri.EscapeDataString(genreParam)}";
+
+        if (!Current.Urls.TryGetValue("SearchByText", out var searchTemplate))
+            return new();
+
+        var url = $"{Current.BaseUrl}{searchTemplate.Replace("{query}", query).Replace("{limit}", limit.ToString())}";
+
+        var response = await _http.GetAsync(url);
+        if (!response.IsSuccessStatusCode) return new();
+
+        var json = await response.Content.ReadAsStringAsync();
+        var books = _parser.Parse(json);
+
+        return books
+            .Where(b => b.ExternalId != externalId)
+            .Take(limit)
+            .Select(b => new BookSummaryDto
+            {
+                ExternalId = b.ExternalId,
+                Title = b.Title,
+                CoverUrl = b.CoverUrl,
+                Year = b.Year,
+                Rating = b.Rating
+            })
+            .ToList();
+    }
 }

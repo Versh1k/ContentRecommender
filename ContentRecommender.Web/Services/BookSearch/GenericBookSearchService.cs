@@ -83,12 +83,22 @@ public class GenericBookSearchService : IBookSearchService
                     await Task.Delay(1000 * (i + 1));
                     continue;
                 }
-                if (!response.IsSuccessStatusCode) return new();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[BookSearch] Error {response.StatusCode}: {errorContent}");
+                    return new();
+                }
+
                 var json = await response.Content.ReadAsStringAsync();
-                return _parser.Parse(json).Take(limit).ToList();
+                var books = _parser.Parse(json).Take(limit).ToList();
+                Console.WriteLine($"[BookSearch] Parsed {books.Count} books");
+                return books;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"[BookSearch] Exception: {ex.Message}");
                 if (i == maxRetries - 1) return new();
                 await Task.Delay(1000 * (i + 1));
             }

@@ -2,12 +2,13 @@
 @using ContentRecommender.Core.Models
 @using ContentRecommender.Core.Services
 @using ContentRecommender.Web.Services
+@using ContentRecommender.Core.Configuration
 @inject IContentDetailService DetailService
 @inject IFavoritesService FavoritesService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
-@inject Microsoft.Extensions.Options.IOptions<ContentRecommender.Core.Configuration.MovieApiOptions> MovieOptions
-@inject Microsoft.Extensions.Options.IOptions<ContentRecommender.Core.Configuration.BookApiOptions> BookOptions
+@inject Microsoft.Extensions.Options.IOptions<MovieApiOptions> MovieOptions
+@inject Microsoft.Extensions.Options.IOptions<BookApiOptions> BookOptions
 
 @if (isLoading)
 {
@@ -34,18 +35,13 @@ else
                 </svg>
                 <span>Назад</span>
             </a>
-
             <div class="detail-actions">
                 <button class="action-btn @(content.IsFavorite ? "active" : "")"
                         @onclick="ToggleFavorite"
                         title="@(content.IsFavorite ? "Удалить из избранного" : "В избранное")">
                     @(content.IsFavorite ? "❤️" : "🤍")
                 </button>
-                <button class="action-btn share-btn"
-                        @onclick="ShareContent"
-                        title="Копировать ссылку">
-                    🔗
-                </button>
+                <button class="action-btn share-btn" @onclick="ShareContent" title="Копировать ссылку">🔗</button>
             </div>
         </div>
 
@@ -57,15 +53,11 @@ else
                 }
                 else
                 {
-                    <div class="no-poster">
-                        <span>@GetFormatIcon(content.Format)</span>
-                    </div>
+                    <div class="no-poster"><span>@GetFormatIcon(content.Format)</span></div>
                 }
             </div>
-
             <div class="detail-info">
                 <h1 class="detail-title">@content.Title</h1>
-
                 <div class="detail-meta">
                     @if (content.Rating.HasValue)
                     {
@@ -84,7 +76,6 @@ else
                         <span>• @content.Pages стр</span>
                     }
                 </div>
-
                 @if (content.Genres?.Any() == true)
                 {
                     <div class="detail-genres">
@@ -94,25 +85,15 @@ else
                         }
                     </div>
                 }
-
-                <div class="detail-description">
-                    <p>@(content.Description ?? "Описание отсутствует")</p>
-                </div>
-
+                <div class="detail-description"><p>@(content.Description ?? "Описание отсутствует")</p></div>
                 @if (!string.IsNullOrEmpty(content.Director))
                 {
-                    <div class="detail-crew">
-                        <strong>Режиссёр:</strong> @content.Director
-                    </div>
+                    <div class="detail-crew"><strong>Режиссёр:</strong> @content.Director</div>
                 }
-
                 @if (!string.IsNullOrEmpty(content.Author))
                 {
-                    <div class="detail-crew">
-                        <strong>Автор:</strong> @content.Author
-                    </div>
+                    <div class="detail-crew"><strong>Автор:</strong> @content.Author</div>
                 }
-
                 <div class="detail-buttons">
                     <a href="@GetExternalUrl(content.Source, content.ExternalId)" target="_blank" class="btn-external">
                         @GetExternalButtonText(content.Source)
@@ -125,32 +106,49 @@ else
         {
             <div class="similar-section">
                 <h2>Похожие</h2>
-                <div class="similar-grid">
-                    @foreach (var similar in content.SimilarItems)
-                    {
-                        <div class="similar-card" @onclick="() => NavigateToContent(similar.Source, similar.ExternalId)">
-                            @if (!string.IsNullOrEmpty(similar.CoverUrl))
-                            {
-                                <img src="@similar.CoverUrl" alt="@similar.Title" />
-                            }
-                            else
-                            {
-                                <div class="no-poster-small">
-                                    <span>@GetFormatIcon(similar.Format)</span>
+                <div class="carousel-wrapper" @ref="carouselWrapper">
+                    <button class="carousel-btn prev"
+                            @onclick="(() => ScrollCarousel(-1))"
+                            disabled="@(_carouselIndex == 0)">
+                        ❮
+                    </button>
+                    <div class="carousel-track" style="transform: translateX(-@(_carouselIndex * 33.333)%)">
+                        @foreach (var item in (content?.SimilarItems ?? Enumerable.Empty<ContentDetailDto>()).Take(9))
+                        {
+                            <div class="carousel-card" @onclick="(() => NavigateToContent(item.Source, item.ExternalId))">
+                                @if (!string.IsNullOrEmpty(item.CoverUrl))
+                                {
+                                    <img src="@item.CoverUrl" alt="@item.Title" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <div class="no-poster-small"><span>@GetFormatIcon(item.Format)</span></div>
+                                }
+                                <div class="carousel-info">
+                                    <h4>@item.Title</h4>
+                                    @if (item.Rating.HasValue)
+                                    {
+                                        <span class="carousel-rating">⭐ @item.Rating.Value.ToString("F1")</span>
+                                    }
+                                    @if (item.Year.HasValue)
+                                    {
+                                        <span class="carousel-year">@item.Year</span>
+                                    }
                                 </div>
-                            }
-                            <div class="similar-info">
-                                <h4>@similar.Title</h4>
-                                @if (similar.Rating.HasValue)
-                                {
-                                    <span class="similar-rating">⭐ @similar.Rating.Value.ToString("F1")</span>
-                                }
-                                @if (similar.Year.HasValue)
-                                {
-                                    <span class="similar-year">@similar.Year</span>
-                                }
                             </div>
-                        </div>
+                        }
+                    </div>
+                    <button class="carousel-btn next"
+                            @onclick="(() => ScrollCarousel(1))"
+                            disabled="@(_carouselIndex >= MaxCarouselIndex)">
+                        ❯
+                    </button>
+                </div>
+                <div class="carousel-dots">
+                    @for (var i = 0; i <= MaxCarouselIndex; i++)
+                    {
+                        <span class="carousel-dot @(_carouselIndex == i ? "active" : "")"
+                              @onclick="(() => GoToSlide(i))"></span>
                     }
                 </div>
             </div>
@@ -164,11 +162,14 @@ else
 
     private ContentDetailDto? content;
     private bool isLoading = true;
+    private ElementReference carouselWrapper;
+    private int _carouselIndex = 0;
+    private const int ItemsPerView = 3;
+    private const int MaxItems = 9;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadContent();
-    }
+    private int MaxCarouselIndex => Math.Max(0, ((content?.SimilarItems?.Count ?? 0) > 9 ? 9 : content?.SimilarItems?.Count ?? 0) / 3 - 1);
+
+    protected override async Task OnInitializedAsync() => await LoadContent();
 
     private async Task LoadContent()
     {
@@ -178,141 +179,90 @@ else
             content = await DetailService.GetContentDetailsAsync(Source, Id);
             if (content != null)
             {
-                content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, 6);
+                content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, MaxItems);
                 content.IsFavorite = await FavoritesService.IsFavoriteAsync(content.ExternalId, content.Source);
             }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Ошибка загрузки: {ex.Message}");
-            content = null;
-        }
-        finally
-        {
-            isLoading = false;
-        }
+        catch (Exception ex) { Console.WriteLine($"Ошибка: {ex.Message}"); content = null; }
+        finally { isLoading = false; }
     }
 
     private async Task ToggleFavorite()
     {
         if (content == null) return;
-
         ContentItem item = content.Format switch
         {
-            ContentFormat.Book => new Book
-            {
-                ExternalId = content.ExternalId,
-                Source = content.Source,
-                Format = content.Format,
-                Title = content.Title,
-                CoverUrl = content.CoverUrl,
-                Author = content.Author,
-                Pages = content.Pages,
-                Year = content.Year,
-                Rating = content.Rating,
-                Genres = content.Genres,
-                Description = content.Description
-            },
-            _ => new Movie
-            {
-                ExternalId = content.ExternalId,
-                Source = content.Source,
-                Format = content.Format,
-                Title = content.Title,
-                CoverUrl = content.CoverUrl,
-                Director = content.Director,
-                DurationMinutes = content.DurationMinutes,
-                Year = content.Year,
-                Rating = content.Rating,
-                Genres = content.Genres,
-                Description = content.Description
-            }
+            ContentFormat.Book => new Book { ExternalId = content.ExternalId, Source = content.Source, Format = content.Format, Title = content.Title, CoverUrl = content.CoverUrl, Author = content.Author, Pages = content.Pages, Year = content.Year, Rating = content.Rating, Genres = content.Genres, Description = content.Description },
+            _ => new Movie { ExternalId = content.ExternalId, Source = content.Source, Format = content.Format, Title = content.Title, CoverUrl = content.CoverUrl, Director = content.Director, DurationMinutes = content.DurationMinutes, Year = content.Year, Rating = content.Rating, Genres = content.Genres, Description = content.Description }
         };
-
         bool newState = await FavoritesService.ToggleFavoriteAsync(item);
-        if (content.IsFavorite != newState)
+        if (content.IsFavorite != newState) { content.IsFavorite = newState; StateHasChanged(); }
+    }
+
+    private async Task ShareContent() => await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Navigation.Uri);
+    private void NavigateToContent(string source, string externalId) => Navigation.NavigateTo($"/content/{source.ToLower()}/{externalId}");
+
+    private void ScrollCarousel(int direction)
+    {
+        var newIndex = _carouselIndex + direction;
+        if (newIndex >= 0 && newIndex <= MaxCarouselIndex)
         {
-            content.IsFavorite = newState;
+            _carouselIndex = newIndex;
             StateHasChanged();
         }
     }
 
-    private async Task ShareContent()
+    private void GoToSlide(int index)
     {
-        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Navigation.Uri);
+        if (index >= 0 && index <= MaxCarouselIndex)
+        {
+            _carouselIndex = index;
+            StateHasChanged();
+        }
     }
 
-    private void NavigateToContent(string source, string externalId)
-    {
-        Navigation.NavigateTo($"/content/{source.ToLower()}/{externalId}");
-    }
-
-    // === АБСТРАКТНЫЕ МЕТОДЫ (без хардкода) ===
-
-    // Получаем текст кнопки из конфига или дефолт
     private string GetExternalButtonText(string source)
     {
         var normalized = source.ToLowerInvariant();
-
-        // Проверяем через конфиг: какой провайдер активен для фильмов/книг
         var movieProvider = MovieOptions.Value.ActiveProvider.ToLowerInvariant();
         var bookProvider = BookOptions.Value.ActiveProvider.ToLowerInvariant();
-
-        if (normalized == movieProvider)
-        {
-            // Можно добавить в конфиг: "ButtonText": "Открыть на Кинопоиске"
-            // Пока дефолтное значение
-            return "Открыть в источнике";
-        }
-        else if (normalized == bookProvider)
-        {
-            return "Читать в источнике";
-        }
-
-        // Универсальный фоллбэк
+        if (normalized == movieProvider) return "Открыть в источнике";
+        if (normalized == bookProvider) return "Читать в источнике";
         return "Открыть";
     }
 
-    // Строим внешний URL полностью из конфига
     private string GetExternalUrl(string source, string externalId)
     {
         var normalized = source.ToLowerInvariant();
         var movieProvider = MovieOptions.Value.ActiveProvider.ToLowerInvariant();
         var bookProvider = BookOptions.Value.ActiveProvider.ToLowerInvariant();
 
+        ProviderConfig? provider = null;
+
         if (normalized == movieProvider)
         {
-            var provider = MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider];
-            // BaseUrl: https://kinopoiskapiunofficial.tech/api/v2.2/films
-            // Нужно превратить в: https://kinopoisk.ru/film/123456/
-            // Это можно настроить в конфиге через отдельное поле ExternalUrlTemplate
-            // Пока делаем простую эвристику:
-            if (provider.BaseUrl.Contains("kinopoisk"))
-                return $"https://kinopoisk.ru/film/{externalId}/";
+            provider = MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider];
         }
         else if (normalized == bookProvider)
         {
-            var provider = BookOptions.Value.Providers[BookOptions.Value.ActiveProvider];
-            if (provider.BaseUrl.Contains("googleapis.com/books"))
-                return $"https://books.google.com/books?id={externalId}";
+            provider = BookOptions.Value.Providers[BookOptions.Value.ActiveProvider];
         }
 
-        // Универсальный фоллбэк: просто открываем BaseUrl + ID
-        // Это можно улучшить, добавив в конфиг поле "ExternalUrlTemplate": "https://example.com/item/{id}"
+        if (provider != null)
+        {
+            return $"{provider.BaseUrl}/{externalId}";
+        }
+
         return $"{GetProviderBaseUrl(source)}/{externalId}";
     }
 
-    // Вспомогательный метод: получаем BaseUrl провайдера по source
     private string GetProviderBaseUrl(string source)
     {
         var normalized = source.ToLowerInvariant();
-
         if (normalized == MovieOptions.Value.ActiveProvider.ToLowerInvariant())
             return MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider].BaseUrl;
-
         if (normalized == BookOptions.Value.ActiveProvider.ToLowerInvariant())
             return BookOptions.Value.Providers[BookOptions.Value.ActiveProvider].BaseUrl;
-
         return "#";
     }
 

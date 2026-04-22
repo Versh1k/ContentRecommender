@@ -1,4 +1,5 @@
 ﻿using ContentRecommender.Core.Configuration;
+using ContentRecommender.Core.Helpers;
 using ContentRecommender.Core.Models;
 using ContentRecommender.Core.Services;
 using Microsoft.Extensions.Options;
@@ -12,8 +13,7 @@ public class GenericMovieDetailService : IMovieDetailService
     private readonly HttpClient _http;
     private readonly MovieApiOptions _options;
 
-    public GenericMovieDetailService(HttpClient http,
-                                     IOptions<MovieApiOptions> options)
+    public GenericMovieDetailService(HttpClient http, IOptions<MovieApiOptions> options)
     {
         _http = http;
         _options = options.Value;
@@ -24,15 +24,13 @@ public class GenericMovieDetailService : IMovieDetailService
 
     public async Task<MovieDetailDto?> GetMovieDetailsAsync(string externalId)
     {
-        Console.WriteLine($"[MovieDetail] Fetching details for ExternalId: '{externalId}'");
-        var url = $"{Current.BaseUrl}/{externalId}";
-        var response = await _http.GetAsync(url);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            Console.WriteLine($"[MovieDetail] API error {response.StatusCode} for ID '{externalId}'");
+        // Абстрактное получение URL из конфига
+        if (!Current.Urls.TryGetValue("GetDetails", out var detailsTemplate))
             return null;
-        }
+
+        var url = $"{Current.BaseUrl}{detailsTemplate.Replace("{id}", externalId)}";
+        var response = await _http.GetAsync(url);
+        if (!response.IsSuccessStatusCode) return null;
 
         var json = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
@@ -42,15 +40,17 @@ public class GenericMovieDetailService : IMovieDetailService
         {
             ExternalId = externalId,
             Source = _options.ActiveProvider,
-            Title = GetString(root, Fm.Title) ?? GetString(root, Fm.TitleFallback) ?? "Без названия",
-            Description = GetString(root, Fm.Description),
-            Year = GetInt32(root, Fm.Year),
-            Rating = GetDouble(root, Fm.Rating),
-            Genres = GetGenres(root),
-            DurationMinutes = GetInt32(root, Fm.Duration),
-            Director = GetDirector(root),
-            Actors = GetActors(root).Take(10).ToList(),
-            CoverUrl = GetPosterUrl(root),
+            Title = JsonParserHelper.GetString(root, Fm.Title)
+                 ?? JsonParserHelper.GetString(root, Fm.TitleFallback)
+                 ?? "Без названия",
+            Description = JsonParserHelper.GetString(root, Fm.Description),
+            Year = JsonParserHelper.GetInt32(root, Fm.Year),
+            Rating = JsonParserHelper.GetDouble(root, Fm.Rating),
+            Genres = ExtractStringArray(root, Fm.Genres, Fm.GenreName),
+            DurationMinutes = JsonParserHelper.GetInt32(root, Fm.Duration),
+            Director = ExtractFirstString(root, Fm.Directors, Fm.DirectorName),
+            Actors = ExtractStringArray(root, Fm.Actors, Fm.ActorName).Take(10).ToList(),
+            CoverUrl = NormalizePosterUrl(JsonParserHelper.GetString(root, Fm.PosterUrl)),
             Format = DetermineFormat(root),
             Trailers = await GetTrailersAsync(externalId)
         };
@@ -58,132 +58,147 @@ public class GenericMovieDetailService : IMovieDetailService
 
     public async Task<List<VideoDto>> GetTrailersAsync(string externalId)
     {
-        var url = $"{Current.BaseUrl}/{externalId}/videos";
+        if (!Current.Urls.TryGetValue("GetVideos", out var videosTemplate) || string.IsNullOrEmpty(videosTemplate))
+            return new();
+
+        var url = $"{Current.BaseUrl}{videosTemplate.Replace("{id}", externalId)}";
         var response = await _http.GetAsync(url);
         if (!response.IsSuccessStatusCode) return new();
 
         var json = await response.Content.ReadAsStringAsync();
-        var data = JsonSerializer.Deserialize<KinopoiskVideosDto>(json);
-        return data?.items
-            ?.Where(v => v.site?.Contains("youtube", StringComparison.OrdinalIgnoreCase) == true)
-            ?.Select(v => new VideoDto
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var trailers = new List<VideoDto>();
+
+        // Абстрактный поиск массива трейлеров (по умолчанию "items")
+        if (JsonParserHelper.TryGetProperty(root, "items", out var items) && items.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in items.EnumerateArray())
             {
-                Title = v.name ?? "Трейлер",
-                YouTubeId = ExtractYouTubeId(v.url)
-            })
-            ?.Take(3)
-            ?.ToList() ?? new();
-    }
-
-    public async Task<List<MovieSummaryDto>> GetSimilarMoviesAsync(string externalId, int limit = 6)
-    {
-        var url = $"{Current.BaseUrl}/{externalId}/similar";
-        var response = await _http.GetAsync(url);
-        if (!response.IsSuccessStatusCode) return new();
-
-        var json = await response.Content.ReadAsStringAsync();
-        var data = JsonSerializer.Deserialize<KinopoiskSimilarDto>(json);
-        return data?.films?.Take(limit).Select(f => new MovieSummaryDto
-        {
-            ExternalId = f.filmId.ToString(),
-            Title = f.nameRu ?? f.nameEn ?? "Без названия",
-            CoverUrl = f.posterUrl?.Replace("/300x450/", "/200x300/"),
-            Year = f.year,
-            Rating = f.ratingKinopoisk,
-            Format = f.type == "TV_SERIES" ? ContentFormat.Series : ContentFormat.Movie
-        }).ToList() ?? new();
-    }
-
-    // ---------- Вспомогательные методы ----------
-    private static bool TryGetProperty(JsonElement element, string path, out JsonElement value)
-    {
-        value = default;
-        if (string.IsNullOrEmpty(path)) return false;
-        var parts = path.Split('.');
-        var current = element;
-        foreach (var part in parts)
-        {
-            if (!current.TryGetProperty(part, out current))
-                return false;
+                var site = JsonParserHelper.GetString(item, "site")?.ToLower();
+                if (site?.Contains("youtube") == true)
+                {
+                    var name = JsonParserHelper.GetString(item, "name") ?? "Трейлер";
+                    var videoUrl = JsonParserHelper.GetString(item, "url");
+                    var ytId = ExtractYouTubeId(videoUrl);
+                    if (!string.IsNullOrEmpty(ytId))
+                        trailers.Add(new VideoDto { Title = name, YouTubeId = ytId });
+                }
+            }
         }
-        value = current;
-        return true;
+        return trailers.Take(3).ToList();
     }
 
-    private static string? GetString(JsonElement element, string path)
-        => TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.String ? val.GetString() : null;
-
-    private static int? GetInt32(JsonElement element, string path)
-        => TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.Number && val.TryGetInt32(out var n) ? n : null;
-
-    private static double? GetDouble(JsonElement element, string path)
-        => TryGetProperty(element, path, out var val) && val.ValueKind == JsonValueKind.Number && val.TryGetDouble(out var d) ? d : null;
-
-    private List<string> GetGenres(JsonElement root)
+    public async Task<List<MovieSummaryDto>> GetSimilarMoviesAsync(string externalId, int limit = 9)
     {
-        var genres = new List<string>();
-        if (TryGetProperty(root, Fm.Genres, out var arr) && arr.ValueKind == JsonValueKind.Array)
-            foreach (var g in arr.EnumerateArray())
-                if (TryGetProperty(g, Fm.GenreName, out var name) && name.ValueKind == JsonValueKind.String)
-                    genres.Add(name.GetString()!);
-        return genres;
+        if (!Current.Urls.TryGetValue("GetSimilar", out var similarTemplate) || string.IsNullOrEmpty(similarTemplate))
+            return new();
+
+        var url = $"{Current.BaseUrl}{similarTemplate.Replace("{id}", externalId)}";
+
+        try
+        {
+            var response = await _http.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"[Similar] API returned {response.StatusCode} for ID {externalId}, returning empty");
+                return new(); // Graceful fallback: пустой список, а не ошибка
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var similar = new List<MovieSummaryDto>();
+
+            if (JsonParserHelper.TryGetProperty(root, "items", out var items) && items.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in items.EnumerateArray().Take(limit))
+                {
+                    var id = JsonParserHelper.GetString(item, Fm.Id);
+                    if (string.IsNullOrEmpty(id)) continue;
+
+                    similar.Add(new MovieSummaryDto
+                    {
+                        ExternalId = id,
+                        Title = JsonParserHelper.GetString(item, Fm.Title)
+                             ?? JsonParserHelper.GetString(item, Fm.TitleFallback)
+                             ?? "Без названия",
+                        CoverUrl = NormalizePosterUrl(JsonParserHelper.GetString(item, Fm.PosterUrl)),
+                        Year = JsonParserHelper.GetInt32(item, Fm.Year),
+                        Rating = JsonParserHelper.GetDouble(item, Fm.Rating)
+                    });
+                }
+            }
+            Console.WriteLine($"[Similar] Found {similar.Count} similar movies for {externalId}");
+            return similar;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Similar] Error for {externalId}: {ex.Message}");
+            return new();
+        }
     }
 
-    private string? GetDirector(JsonElement root)
+    // ---------- Абстрактные вспомогательные методы ----------
+    private static List<string> ExtractStringArray(JsonElement root, string arrayPath, string itemField)
     {
-        if (TryGetProperty(root, Fm.Directors, out var arr) && arr.ValueKind == JsonValueKind.Array)
-            foreach (var d in arr.EnumerateArray())
-                if (TryGetProperty(d, Fm.DirectorName, out var name) && name.ValueKind == JsonValueKind.String)
-                    return name.GetString();
+        var result = new List<string>();
+        if (string.IsNullOrEmpty(arrayPath) || string.IsNullOrEmpty(itemField)) return result;
+
+        if (JsonParserHelper.TryGetProperty(root, arrayPath, out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in arr.EnumerateArray())
+            {
+                var val = JsonParserHelper.GetString(item, itemField);
+                if (!string.IsNullOrEmpty(val)) result.Add(val);
+            }
+        }
+        return result;
+    }
+
+    private static string? ExtractFirstString(JsonElement root, string arrayPath, string itemField)
+    {
+        if (string.IsNullOrEmpty(arrayPath) || string.IsNullOrEmpty(itemField)) return null;
+
+        if (JsonParserHelper.TryGetProperty(root, arrayPath, out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in arr.EnumerateArray())
+            {
+                var val = JsonParserHelper.GetString(item, itemField);
+                if (!string.IsNullOrEmpty(val)) return val;
+            }
+        }
         return null;
     }
 
-    private IEnumerable<string> GetActors(JsonElement root)
+    private static string? NormalizePosterUrl(string? url)
     {
-        if (TryGetProperty(root, Fm.Actors, out var arr) && arr.ValueKind == JsonValueKind.Array)
-            foreach (var a in arr.EnumerateArray())
-                if (TryGetProperty(a, Fm.ActorName, out var name) && name.ValueKind == JsonValueKind.String)
-                    yield return name.GetString()!;
-    }
-
-    private string? GetPosterUrl(JsonElement root)
-    {
-        var poster = GetString(root, Fm.PosterUrl);
-        if (!string.IsNullOrEmpty(poster))
-            poster = poster.Replace("/300x450/", "/700x1000/");
-        return poster;
+        if (string.IsNullOrEmpty(url)) return null;
+        return url.Replace("/300x450/", "/700x1000/")
+                  .Replace("http://", "https://");
     }
 
     private ContentFormat DetermineFormat(JsonElement root)
     {
-        var type = GetString(root, Fm.Type) ?? "";
-        if (type.Contains("TV_SERIES", StringComparison.OrdinalIgnoreCase) ||
-            type.Contains("MINI_SERIES", StringComparison.OrdinalIgnoreCase))
-            return ContentFormat.Series;
-        var genres = GetGenres(root);
-        if (genres.Any(g => g.Contains("аниме") || g.Contains("мульт")))
-            return ContentFormat.Cartoon;
+        var type = JsonParserHelper.GetString(root, Fm.Type)?.ToUpper() ?? "";
+        if (Current.TypeMapping.TryGetValue(type, out var mapped))
+        {
+            return mapped switch
+            {
+                "TvSeries" => ContentFormat.Series,
+                "Cartoon" => ContentFormat.Cartoon,
+                _ => ContentFormat.Movie
+            };
+        }
         return ContentFormat.Movie;
     }
 
-    private string ExtractYouTubeId(string? url)
+    private static string ExtractYouTubeId(string? url)
     {
         if (string.IsNullOrEmpty(url)) return "";
         var match = Regex.Match(url, @"(?:v=|\/)([a-zA-Z0-9_-]{11})");
         return match.Success ? match.Groups[1].Value : "";
-    }
-
-    private class KinopoiskVideosDto { public List<VideoItem>? items { get; set; } }
-    private class VideoItem { public string? name { get; set; } public string? site { get; set; } public string? url { get; set; } }
-    private class KinopoiskSimilarDto { public List<SimilarItem>? films { get; set; } }
-    private class SimilarItem
-    {
-        public int filmId { get; set; }
-        public string? nameRu { get; set; }
-        public string? nameEn { get; set; }
-        public int? year { get; set; }
-        public double? ratingKinopoisk { get; set; }
-        public string? posterUrl { get; set; }
-        public string? type { get; set; }
     }
 }

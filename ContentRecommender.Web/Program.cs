@@ -118,6 +118,11 @@ builder.Services.AddHttpClient<IBookSearchService, GenericBookSearchService>((sp
     var options = sp.GetRequiredService<BookApiOptions>();
     var provider = options.Providers[options.ActiveProvider];
     client.BaseAddress = new Uri(provider.BaseUrl);
+
+    client.DefaultRequestHeaders.Add("User-Agent", "ContentRecommender/1.0");
+
+    if (!string.IsNullOrEmpty(provider.ApiKeyHeader) && !string.IsNullOrEmpty(provider.ApiKey))
+        client.DefaultRequestHeaders.Add(provider.ApiKeyHeader, provider.ApiKey);
 });
 
 builder.Services.AddHttpClient<IBookDetailService, GenericBookDetailService>((sp, client) =>
@@ -125,6 +130,11 @@ builder.Services.AddHttpClient<IBookDetailService, GenericBookDetailService>((sp
     var options = sp.GetRequiredService<BookApiOptions>();
     var provider = options.Providers[options.ActiveProvider];
     client.BaseAddress = new Uri(provider.BaseUrl);
+
+    client.DefaultRequestHeaders.Add("User-Agent", "ContentRecommender/1.0");
+
+    if (!string.IsNullOrEmpty(provider.ApiKeyHeader) && !string.IsNullOrEmpty(provider.ApiKey))
+        client.DefaultRequestHeaders.Add(provider.ApiKeyHeader, provider.ApiKey);
 });
 
 // Компоненты
