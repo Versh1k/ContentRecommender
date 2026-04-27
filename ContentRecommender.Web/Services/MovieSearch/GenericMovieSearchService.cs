@@ -54,6 +54,10 @@ public class GenericMovieSearchService : IMovieSearchService
                     allMovies.Add(movie);
             }
         }
+        var requestedLower = genres.Select(g => g.ToLower()).ToHashSet();
+        allMovies = allMovies
+            .Where(m => m.Genres.Any(g => requestedLower.Contains(g.ToLower())))
+            .ToList();
 
         return allMovies.OrderByDescending(m => m.Rating ?? 0).Take(limit).ToList();
     }

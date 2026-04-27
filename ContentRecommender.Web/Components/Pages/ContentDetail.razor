@@ -51,10 +51,6 @@ else
                 {
                     <img src="@content.CoverUrl" alt="@content.Title" />
                 }
-                else
-                {
-                    <div class="no-poster"><span>@GetFormatIcon(content.Format)</span></div>
-                }
             </div>
             <div class="detail-info">
                 <h1 class="detail-title">@content.Title</h1>
@@ -119,10 +115,6 @@ else
                                 @if (!string.IsNullOrEmpty(item.CoverUrl))
                                 {
                                     <img src="@item.CoverUrl" alt="@item.Title" loading="lazy" />
-                                }
-                                else
-                                {
-                                    <div class="no-poster-small"><span>@GetFormatIcon(item.Format)</span></div>
                                 }
                                 <div class="carousel-info">
                                     <h4>@item.Title</h4>
@@ -248,12 +240,12 @@ else
             provider = BookOptions.Value.Providers[BookOptions.Value.ActiveProvider];
         }
 
-        if (provider != null)
+        if (provider != null && !string.IsNullOrEmpty(provider.PublicLinkTemplate))
         {
-            return $"{provider.BaseUrl}/{externalId}";
+            return provider.PublicLinkTemplate.Replace("{id}", externalId);
         }
 
-        return $"{GetProviderBaseUrl(source)}/{externalId}";
+        return "#";
     }
 
     private string GetProviderBaseUrl(string source)
@@ -266,12 +258,4 @@ else
         return "#";
     }
 
-    private string GetFormatIcon(ContentFormat format) => format switch
-    {
-        ContentFormat.Movie => "🎬",
-        ContentFormat.Series => "📺",
-        ContentFormat.Cartoon => "🎨",
-        ContentFormat.Book => "📚",
-        _ => "🎬"
-    };
 }

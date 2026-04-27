@@ -82,7 +82,6 @@ public class ConfigurableJsonParser : IMovieApiResponseParser
             }
         }
 
-        // Director
         string? director = null;
         if (!string.IsNullOrEmpty(Fm.Directors) && !string.IsNullOrEmpty(Fm.DirectorName) &&
             JsonParserHelper.TryGetProperty(item, Fm.Directors, out var dirsElem) &&

@@ -13,6 +13,7 @@ public class ProviderConfig
     public Dictionary<string, string> TypeMapping { get; set; } = new();
     public Dictionary<string, List<string>> MoodToGenres { get; set; } = new();
     public Dictionary<string, string> MoodToSubjects { get; set; } = new();
+    public string PublicLinkTemplate { get; set; } = "";
     public string ExternalButtonText { get; set; } = "Открыть";
     public string ExternalUrlTemplate { get; set; } = "{BaseUrl}/{id}";
     public string FallbackSubject { get; set; } = "subject:fiction";

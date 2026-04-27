@@ -24,7 +24,6 @@ public class GenericMovieDetailService : IMovieDetailService
 
     public async Task<MovieDetailDto?> GetMovieDetailsAsync(string externalId)
     {
-        // Абстрактное получение URL из конфига
         if (!Current.Urls.TryGetValue("GetDetails", out var detailsTemplate))
             return null;
 
@@ -71,7 +70,6 @@ public class GenericMovieDetailService : IMovieDetailService
 
         var trailers = new List<VideoDto>();
 
-        // Абстрактный поиск массива трейлеров (по умолчанию "items")
         if (JsonParserHelper.TryGetProperty(root, "items", out var items) && items.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in items.EnumerateArray())
@@ -103,7 +101,7 @@ public class GenericMovieDetailService : IMovieDetailService
             if (!response.IsSuccessStatusCode)
             {
                 Console.WriteLine($"[Similar] API returned {response.StatusCode} for ID {externalId}, returning empty");
-                return new(); // Graceful fallback: пустой список, а не ошибка
+                return new();
             }
 
             var json = await response.Content.ReadAsStringAsync();
@@ -116,18 +114,18 @@ public class GenericMovieDetailService : IMovieDetailService
             {
                 foreach (var item in items.EnumerateArray().Take(limit))
                 {
-                    var id = JsonParserHelper.GetString(item, Fm.Id);
+                    var id = JsonParserHelper.GetString(item, "filmId");
                     if (string.IsNullOrEmpty(id)) continue;
 
                     similar.Add(new MovieSummaryDto
                     {
                         ExternalId = id,
-                        Title = JsonParserHelper.GetString(item, Fm.Title)
-                             ?? JsonParserHelper.GetString(item, Fm.TitleFallback)
+                        Title = JsonParserHelper.GetString(item, "nameRu")
+                             ?? JsonParserHelper.GetString(item, "nameEn")
                              ?? "Без названия",
-                        CoverUrl = NormalizePosterUrl(JsonParserHelper.GetString(item, Fm.PosterUrl)),
-                        Year = JsonParserHelper.GetInt32(item, Fm.Year),
-                        Rating = JsonParserHelper.GetDouble(item, Fm.Rating)
+                        CoverUrl = NormalizePosterUrl(JsonParserHelper.GetString(item, "posterUrl")),
+                        Year = null,
+                        Rating = null
                     });
                 }
             }
@@ -141,7 +139,6 @@ public class GenericMovieDetailService : IMovieDetailService
         }
     }
 
-    // ---------- Абстрактные вспомогательные методы ----------
     private static List<string> ExtractStringArray(JsonElement root, string arrayPath, string itemField)
     {
         var result = new List<string>();
