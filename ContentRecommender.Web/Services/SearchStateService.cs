@@ -7,7 +7,7 @@ namespace ContentRecommender.Web.Services;
 
 public interface ISearchStateService
 {
-    Task SaveSearchStateAsync(string query, List<string> genres, MoodType? mood, SearchCriteria.SearchContentType contentType, List<ContentItem> results);
+    Task SaveSearchStateAsync(string query, List<string> genres, string? mood, SearchCriteria.SearchContentType contentType, List<ContentItem> results);
     Task<SearchState?> GetSearchStateAsync();
     Task ClearSearchStateAsync();
 }
@@ -23,7 +23,7 @@ public class SearchStateService : ISearchStateService
         _js = js;
     }
 
-    public async Task SaveSearchStateAsync(string query, List<string> genres, MoodType? mood, SearchCriteria.SearchContentType contentType, List<ContentItem> results)
+    public async Task SaveSearchStateAsync(string query, List<string> genres, string? mood, SearchCriteria.SearchContentType contentType, List<ContentItem> results)
     {
         try
         {
@@ -31,7 +31,7 @@ public class SearchStateService : ISearchStateService
             {
                 Query = query,
                 Genres = genres,
-                Mood = mood?.ToString(),
+                Mood = mood,
                 ContentType = contentType.ToString(),
                 Timestamp = DateTime.UtcNow.Ticks,
                 UserId = userId,
@@ -71,7 +71,6 @@ public class SearchStateService : ISearchStateService
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("JavaScript interop"))
         {
-            // Игнорируем ошибки на этапе предварительного рендеринга
             Console.WriteLine($"JS interop не готов: {ex.Message}");
             return null;
         }

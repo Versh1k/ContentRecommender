@@ -197,7 +197,7 @@
 
     private bool isSearching = false;
     private string? errorMessage;
-    private MoodType? detectedMood;
+    private string? detectedMood;
     private List<string> recommendedGenres = new();
     private List<ContentItem>? results;
     private SearchCriteria.SearchContentType selectedContentType = SearchCriteria.SearchContentType.All;
@@ -231,7 +231,7 @@
                     {
                         currentSearchMode = SearchMode.ByMood;
                         userInput = savedState.Query;
-                        detectedMood = Enum.TryParse<MoodType>(savedState.Mood, out var mood) ? mood : null;
+                        detectedMood = !string.IsNullOrEmpty(savedState.Mood) ? savedState.Mood : null;
                     }
                     else
                     {

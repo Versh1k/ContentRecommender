@@ -6,7 +6,7 @@ namespace ContentRecommender.Core.Models;
 public class SearchCriteria
 {
     public string? UserInput { get; set; }
-    public MoodType? Mood { get; set; }
+    public string? Mood { get; set; }
     public int? AvailableTimeMinutes { get; set; }
     public List<ContentFormat>? ContentTypes { get; set; }
     public bool? OnlyCompleted { get; set; }

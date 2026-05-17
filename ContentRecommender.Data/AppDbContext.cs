@@ -68,8 +68,8 @@ public class AppDbContext : IdentityDbContext<AppUser>
             .Property(c => c.MoodTags)
             .HasConversion(
                 v => v != null ? JsonSerializer.Serialize(v, jsonOptions) : null,
-                v => !string.IsNullOrEmpty(v) ? JsonSerializer.Deserialize<List<MoodType>>(v, jsonOptions) : null)
-            .Metadata.SetValueComparer(CreateListComparer<MoodType>());
+                v => !string.IsNullOrEmpty(v) ? JsonSerializer.Deserialize<List<string>>(v, jsonOptions) : null)
+            .Metadata.SetValueComparer(CreateListComparer<string>());
 
         modelBuilder.Entity<Movie>()
             .Property(m => m.Actors)
@@ -82,8 +82,8 @@ public class AppDbContext : IdentityDbContext<AppUser>
             .Property(u => u.PreferredMoods)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, jsonOptions),
-                v => JsonSerializer.Deserialize<List<MoodType>>(v, jsonOptions) ?? new List<MoodType>())
-            .Metadata.SetValueComparer(CreateListComparer<MoodType>());
+                v => JsonSerializer.Deserialize<List<string>>(v, jsonOptions) ?? new List<string>())
+            .Metadata.SetValueComparer(CreateListComparer<string>());
 
         modelBuilder.Entity<UserPreferences>()
             .Property(u => u.PreferredContentTypes)

@@ -25,13 +25,6 @@ public class ContentDetailDto
 
     public bool IsFavorite { get; set; }
     public List<ContentDetailDto>? SimilarItems { get; set; }
-
-    public string ExternalUrl => Source.ToLower() switch
-    {
-        "kinopoisk" => $"https://www.kinopoisk.ru/film/{ExternalId}/",
-        "googlebooks" => $"https://www.google.com/books/edition/-/{ExternalId}",
-        _ => "#"
-    };
 }
 
 public class TrailerDto

@@ -16,7 +16,6 @@ using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ========== РУЧНАЯ ЗАГРУЗКА КОНФИГУРАЦИЙ ==========
 var jsonPath = Path.Combine(builder.Environment.ContentRootPath, "appsettings.json");
 if (!File.Exists(jsonPath))
     throw new FileNotFoundException("appsettings.json not found", jsonPath);
@@ -43,7 +42,7 @@ builder.Services.AddSingleton(bookOptions);
 builder.Services.AddSingleton<IOptions<MovieApiOptions>>(new OptionsWrapper<MovieApiOptions>(movieOptions));
 builder.Services.AddSingleton<IOptions<BookApiOptions>>(new OptionsWrapper<BookApiOptions>(bookOptions));
 
-// ========== ОСТАЛЬНЫЕ СЕРВИСЫ ==========
+// ОСТАЛЬНЫЕ СЕРВИСЫ
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddControllers();
 builder.Services.AddRazorPages().AddRazorRuntimeCompilation();
@@ -72,6 +71,8 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.AccessDeniedPath = "/Account/AccessDenied";
     options.SlidingExpiration = true;
 });
+
+builder.Services.Configure<MoodModelOptions>(builder.Configuration.GetSection("MoodModel"));
 
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
@@ -186,7 +187,7 @@ using (var scope = app.Services.CreateScope())
 
 app.Run();
 
-// ========== КЛАСС ДЛЯ ДЕСЕРИАЛИЗАЦИИ КОРНЯ JSON ==========
+// JSON 
 public class AppSettingsRoot
 {
     public MovieApiOptions MovieApi { get; set; } = new();

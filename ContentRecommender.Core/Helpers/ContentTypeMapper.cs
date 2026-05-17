@@ -8,6 +8,7 @@ public static class ContentTypeMapper
     {
         return type switch
         {
+            SearchCriteria.SearchContentType.All => ContentTypeCategory.All,
             SearchCriteria.SearchContentType.Movies => ContentTypeCategory.FeatureFilm,
             SearchCriteria.SearchContentType.TvSeries => ContentTypeCategory.TvSeries,
             SearchCriteria.SearchContentType.Cartoons => ContentTypeCategory.Cartoon,

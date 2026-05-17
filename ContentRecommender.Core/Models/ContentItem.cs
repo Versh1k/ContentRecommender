@@ -31,7 +31,7 @@ public abstract class ContentItem
     public double? Rating { get; set; }
 
     public List<string>? Genres { get; set; }
-    public List<MoodType>? MoodTags { get; set; }
+    public List<string>? MoodTags { get; set; }
 
     public bool? IsCompleted { get; set; }
 

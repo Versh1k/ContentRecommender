@@ -2,6 +2,7 @@
 
 public enum ContentFormat
 {
+    All = 0,
     Movie = 1,
     Series = 2,
     Cartoon = 3,

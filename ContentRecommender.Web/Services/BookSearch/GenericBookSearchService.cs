@@ -55,7 +55,7 @@ public class GenericBookSearchService : IBookSearchService
         return await FetchPage(url, limit);
     }
 
-    public async Task<List<Book>> SearchByMoodAsync(MoodType mood, int limit = 15)
+    public async Task<List<Book>> SearchByMoodAsync(string mood, int limit = 15)
     {
         var moodKey = mood.ToString();
         if (Current.MoodToSubjects.TryGetValue(moodKey, out var subject))

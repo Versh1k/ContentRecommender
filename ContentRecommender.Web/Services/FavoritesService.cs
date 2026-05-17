@@ -32,7 +32,6 @@ public class FavoritesService : IFavoritesService
         if (string.IsNullOrEmpty(userId))
             return false;
 
-        // Проверка через репозиторий (прямой запрос к БД)
         return await _repository.IsFavoriteAsync(userId, externalId, source);
     }
     public FavoritesService(
@@ -109,7 +108,7 @@ public class FavoritesService : IFavoritesService
                     _favoriteKeys.Add(key);
                     Console.WriteLine($" Добавлено, всего избранного: {_favoriteKeys.Count}");
                     OnFavoritesChanged?.Invoke();
-                    return true; // теперь В избранном
+                    return true;
                 }
             }
 
@@ -119,8 +118,6 @@ public class FavoritesService : IFavoritesService
         {
             Console.WriteLine($"❌ Ошибка избранного: {ex.Message}");
 
-            // Если ошибка связана с дубликатом (нарушение уникальности), значит элемент уже есть в БД,
-            // но по какой-то причине отсутствует в кэше. Синхронизируем кэш.
             if (ex.Message.Contains("duplicate") || ex.Message.Contains("уникальности") || ex.Message.Contains("23505"))
             {
                 var userId = await GetCurrentUserIdAsync();

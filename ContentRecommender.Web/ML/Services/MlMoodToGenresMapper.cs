@@ -6,7 +6,7 @@ namespace ContentRecommender.Web.ML.Services;
 
 public interface IMlGenreMapper
 {
-    List<string> GetGenresFromMoodScores(MoodType predictedMood, float[] scores, float threshold = 0.2f);
+    List<string> GetGenresFromMoodScores(string moodName, float[] scores, float threshold = 0.2f);
 }
 
 public class MlMoodToGenresMapper : IMlGenreMapper
@@ -18,14 +18,13 @@ public class MlMoodToGenresMapper : IMlGenreMapper
         _options = options.Value;
     }
 
-    public List<string> GetGenresFromMoodScores(MoodType predictedMood, float[] scores, float threshold = 0.2f)
+    public List<string> GetGenresFromMoodScores(string moodName, float[] scores, float threshold = 0.2f)
     {
         var provider = _options.Providers[_options.ActiveProvider];
         var moodToGenres = provider.MoodToGenres;
 
         var resultGenres = new List<string>();
-        var moodKey = predictedMood.ToString();
-        if (moodToGenres.TryGetValue(moodKey, out var primaryGenres))
+        if (moodToGenres.TryGetValue(moodName, out var primaryGenres))
             resultGenres.AddRange(primaryGenres);
 
         return resultGenres.Distinct().ToList();

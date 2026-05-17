@@ -7,7 +7,7 @@ public class UserPreferences
     public string UserId { get; set; } = string.Empty;
     public virtual AppUser? User { get; set; }
 
-    public List<MoodType> PreferredMoods { get; set; } = new();
+    public List<string> PreferredMoods { get; set; } = new();
     public List<ContentTypeCategory> PreferredContentTypes { get; set; } = new();
     public List<BookCategory> PreferredBookCategories { get; set; } = new();
     public List<string> FavoriteGenres { get; set; } = new();
