@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
 @using ContentRecommender.Core.Models
 @using ContentRecommender.Core.Services
 @using ContentRecommender.Core.Helpers
@@ -22,6 +23,7 @@
 @inject IFavoritesRepository FavoritesRepository
 @inject AuthenticationStateProvider AuthStateProvider
 @inject UserManager<AppUser> UserManager
+@inject IOptions<SearchSettings> SearchSettingsOptions
 
 <div class="search-page @(currentSearchMode == SearchMode.ByKeywords ? "mode-keywords" : "")">
     <div class="search-container">
@@ -68,7 +70,7 @@
             <div class="search-box">
                 <textarea @bind="currentSearchQuery" @bind:event="oninput" class="search-input"
                           placeholder="@(currentSearchMode == SearchMode.ByMood ? "Опишите своё настроение..." : "Название, актёр, жанр или описание...")"
-                          rows="3" maxlength="500"></textarea>
+                          rows="3" maxlength="@Settings.Ui.SearchInputMaxLength"></textarea>
                 <button class="search-btn" @onclick="PerformSearch" disabled="@isSearching">
                     @if (isSearching)
                     {
@@ -82,53 +84,6 @@
                 </button>
             </div>
         </div>
-
-        @* @if (currentSearchMode == SearchMode.ByKeywords)
-        {
-            <div class="genres-dropdown">
-                <button class="genres-dropdown-btn @(isGenresDropdownOpen ? "active" : "")" @onclick="ToggleGenresDropdown">
-                    <span>
-                        @if (selectedManualGenres.Any())
-                        {
-                            <text>🎬 Выбрано: @string.Join(", ", selectedManualGenres) <small>(@selectedManualGenres.Count/3)</small></text>
-                        }
-                        else
-                        {
-                            <text>🎬 Выбрать жанры (макс. 3)</text>
-                        }
-                    </span>
-                    <svg class="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                </button>
-
-                @if (isGenresDropdownOpen)
-                {
-                    <div class="genres-dropdown-content">
-                        <div class="genres-dropdown-header">
-                            <span>Выберите жанры</span>
-                            <small>@selectedManualGenres.Count / @MaxGenres</small>
-                        </div>
-                        <div class="genres-list-dropdown">
-                            @foreach (var genre in AvailableGenres)
-                            {
-                                var isSelected = selectedManualGenres.Contains(genre);
-                                <span class="genre-chip @(isSelected ? "selected" : "")"
-                                      @onclick="() => ToggleGenre(genre)">
-                                    @genre @(isSelected ? "✓" : "")
-                                </span>
-                            }
-                        </div>
-                        @if (selectedManualGenres.Any())
-                        {
-                            <button class="clear-genres-btn" @onclick="ClearSelectedGenres">
-                                ✕ Очистить выбор
-                            </button>
-                        }
-                    </div>
-                }
-            </div>
-        } *@
 
         @if (!string.IsNullOrEmpty(errorMessage))
         {
@@ -183,6 +138,9 @@
 
 @code {
     private enum SearchMode { ByMood, ByKeywords }
+
+    // 🔥 Хелпер для доступа к настройкам
+    private SearchSettings Settings => SearchSettingsOptions.Value;
 
     private SearchMode currentSearchMode = SearchMode.ByMood;
     private string userInput = "";
@@ -268,7 +226,7 @@
         {
             await InvokeAsync(async () =>
             {
-                await Task.Delay(300);
+                await Task.Delay(Settings.Ui.FavoritesRefreshDelayMs);
                 _isLoadingInProgress = true;
                 _favoriteKeys = await FavoritesService.GetUserFavoriteKeysAsync();
                 _isLoadingInProgress = false;
@@ -350,10 +308,14 @@
             {
                 var (mlMood, mlConfidence, mlScores) = MoodAnalysisService.AnalyzeMoodFull(currentSearchQuery);
                 detectedMood = mlMood;
-                var genres = MlGenreMapper.GetGenresFromMoodScores(mlMood, mlScores, threshold: 0.05f);
+
+                var genres = MlGenreMapper.GetGenresFromMoodScores(
+                    mlMood,
+                    mlScores,
+                    threshold: Settings.MoodScoreThreshold);
 
                 if (!genres.Any())
-                    genres = new List<string> { "драма", "приключения" };
+                    genres = Settings.FallbackGenres.ToList();
 
                 recommendedGenres = genres.Distinct().ToList();
                 Console.WriteLine($"[ML] Настроение: {mlMood}, уверенность: {mlConfidence:F2}");
@@ -361,14 +323,20 @@
                 if (ShouldSearchMovies(selectedContentType))
                 {
                     var targetType = ContentTypeMapper.MapToCategory(selectedContentType);
-                    var movies = await MovieSearchService.SearchByGenresAsync(genres, targetType, 12, searchSeed);
+                    var movies = await MovieSearchService.SearchByGenresAsync(
+                        genres,
+                        targetType,
+                        Settings.Limits.MoviesByGenre,
+                        searchSeed);
                     Console.WriteLine($"[Search] MovieSearchService вернул {movies.Count} фильмов");
                     finalResults.AddRange(movies);
                 }
 
                 if (ShouldSearchBooks(selectedContentType))
                 {
-                    var books = await BookSearchService.SearchByGenresAsync(recommendedGenres, 10);
+                    var books = await BookSearchService.SearchByGenresAsync(
+                        recommendedGenres,
+                        Settings.Limits.BooksByGenre);
                     finalResults.AddRange(books);
                 }
             }
@@ -380,7 +348,11 @@
                 if (ShouldSearchMovies(selectedContentType))
                 {
                     var targetType = ContentTypeMapper.MapToCategory(selectedContentType);
-                    var movies = await MovieSearchService.SearchByTextAsync(currentSearchQuery, targetType, 12, searchSeed);
+                    var movies = await MovieSearchService.SearchByTextAsync(
+                        currentSearchQuery,
+                        targetType,
+                        Settings.Limits.MoviesByText,
+                        searchSeed);
                     Console.WriteLine($"[Search] MovieSearchService вернул {movies.Count} фильмов");
                     finalResults.AddRange(movies);
                     Console.WriteLine($"[TextSearch] Найдено фильмов: {movies.Count}");
@@ -388,12 +360,18 @@
 
                 if (ShouldSearchBooks(selectedContentType))
                 {
-                    var books = await BookSearchService.SearchByTextAsync(currentSearchQuery, 10);
+                    var books = await BookSearchService.SearchByTextAsync(
+                        currentSearchQuery,
+                        Settings.Limits.BooksByText);
                     finalResults.AddRange(books);
                 }
             }
 
-            results = finalResults.OrderByDescending(x => x.Rating ?? 0).Take(20).ToList();
+            results = finalResults
+                .OrderByDescending(x => x.Rating ?? 0)
+                .Take(Settings.Limits.MaxDisplayResults)
+                .ToList();
+
             Console.WriteLine($"[Search] Итоговое количество для отображения: {results.Count}");
 
             if (!results.Any())

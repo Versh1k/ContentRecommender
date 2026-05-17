@@ -32,7 +32,7 @@ class Program
 
         string dataPath = @"C:\Users\versh\source\repos\ContentRecommender\ContentRecommender\ContentRecommender.Web\ML\Data";
         string dataFile = Path.Combine(dataPath, "train_fixed.csv");
-        string modelPath = Path.Combine(dataPath, @"..\Models\MoodAnalyzer_OTCHET.zip");
+        string modelPath = Path.Combine(dataPath, @"..\Models\MoodAnalyzer(700prim_na_class).zip");
 
         if (!File.Exists(dataFile))
         {

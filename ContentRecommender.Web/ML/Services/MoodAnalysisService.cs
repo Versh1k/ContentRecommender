@@ -47,7 +47,6 @@ public class MoodAnalysisService : IMoodAnalysisService
 
     private void LoadModel()
     {
-        // Без изменений, как у тебя
         try
         {
             var possiblePaths = new[]

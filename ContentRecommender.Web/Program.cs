@@ -73,6 +73,8 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 builder.Services.Configure<MoodModelOptions>(builder.Configuration.GetSection("MoodModel"));
+builder.Services.Configure<SearchSettings>(
+    builder.Configuration.GetSection("SearchSettings"));
 
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
