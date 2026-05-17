@@ -50,12 +50,11 @@ public class ConfigurableJsonParser : IMovieApiResponseParser
     private Movie MapToMovie(JsonElement item)
     {
         string externalId = JsonParserHelper.GetString(item, Fm.Id) ?? Guid.NewGuid().ToString();
-
         string title = JsonParserHelper.GetString(item, Fm.Title)
                     ?? (!string.IsNullOrEmpty(Fm.TitleFallback)
                         ? JsonParserHelper.GetString(item, Fm.TitleFallback)
                         : null)
-                    ?? "Без названия";
+                    ?? Current.Defaults?.DefaultTitle ?? string.Empty;
 
         int? year = JsonParserHelper.GetInt32(item, Fm.Year);
         double? rating = JsonParserHelper.GetDouble(item, Fm.Rating);
@@ -63,8 +62,6 @@ public class ConfigurableJsonParser : IMovieApiResponseParser
         int? duration = JsonParserHelper.GetInt32(item, Fm.Duration);
         string? poster = JsonParserHelper.GetString(item, Fm.PosterUrl);
         string? type = JsonParserHelper.GetString(item, Fm.Type);
-
-        Console.WriteLine($"[Parser] ExternalId='{externalId}', Title='{title}'");
 
         var genres = new List<string>();
         if (!string.IsNullOrEmpty(Fm.Genres) && !string.IsNullOrEmpty(Fm.GenreName) &&
@@ -98,6 +95,7 @@ public class ConfigurableJsonParser : IMovieApiResponseParser
         }
 
         var category = _categoryResolver.DetermineCategory(type, genres, duration);
+        Console.WriteLine($"[Parser] Title='{title}', Type='{type}', Genres=[{string.Join(",", genres)}], Category={category}");
 
         return new Movie
         {

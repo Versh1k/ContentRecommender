@@ -13,10 +13,8 @@ public class GenericBookSearchService : IBookSearchService
     private readonly IGenreMapper _genreMapper;
     private readonly Random _rnd = new();
 
-    public GenericBookSearchService(HttpClient http,
-                                    IOptions<BookApiOptions> options,
-                                    IBookResponseParser parser,
-                                    IGenreMapper genreMapper)
+    public GenericBookSearchService(HttpClient http, IOptions<BookApiOptions> options,
+                                    IBookResponseParser parser, IGenreMapper genreMapper)
     {
         _http = http;
         _options = options.Value;
@@ -34,7 +32,7 @@ public class GenericBookSearchService : IBookSearchService
             .Distinct()
             .ToList();
 
-        if (!queries.Any())
+        if (!queries.Any() && !string.IsNullOrEmpty(Current.FallbackSubject))
             queries.Add(Current.FallbackSubject);
 
         var books = new List<Book>();
@@ -54,11 +52,12 @@ public class GenericBookSearchService : IBookSearchService
         var url = BuildUrl(query, limit);
         return await FetchPage(url, limit);
     }
-
-    public async Task<List<Book>> SearchByMoodAsync(string mood, int limit = 15)
+    public async Task<List<Book>> SearchByMoodAsync(string? mood, int limit = 15)
     {
-        var moodKey = mood.ToString();
-        if (Current.MoodToSubjects.TryGetValue(moodKey, out var subject))
+        if (string.IsNullOrEmpty(mood))
+            return await SearchByTextAsync(Current.FallbackSubject, limit);
+
+        if (Current.MoodToSubjects.TryGetValue(mood, out var subject))
             return await SearchByTextAsync(subject, limit);
         return await SearchByTextAsync(Current.FallbackSubject, limit);
     }
@@ -75,7 +74,9 @@ public class GenericBookSearchService : IBookSearchService
 
     private async Task<List<Book>> FetchPage(string url, int limit)
     {
-        int maxRetries = 3;
+        int maxRetries = Current.Defaults?.MaxRetries ?? 3;
+        int delayMs = Current.Defaults?.RetryDelayMs ?? 1000;
+
         for (int i = 0; i < maxRetries; i++)
         {
             try
@@ -83,7 +84,7 @@ public class GenericBookSearchService : IBookSearchService
                 var response = await _http.GetAsync(url);
                 if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
                 {
-                    await Task.Delay(1000 * (i + 1));
+                    await Task.Delay(delayMs * (i + 1));
                     continue;
                 }
 
@@ -103,7 +104,7 @@ public class GenericBookSearchService : IBookSearchService
             {
                 Console.WriteLine($"[BookSearch] Exception: {ex.Message}");
                 if (i == maxRetries - 1) return new();
-                await Task.Delay(1000 * (i + 1));
+                await Task.Delay(delayMs * (i + 1));
             }
         }
         return new();

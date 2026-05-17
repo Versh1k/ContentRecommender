@@ -41,14 +41,15 @@ public class GenericMovieDetailService : IMovieDetailService
             Source = _options.ActiveProvider,
             Title = JsonParserHelper.GetString(root, Fm.Title)
                  ?? JsonParserHelper.GetString(root, Fm.TitleFallback)
-                 ?? "Без названия",
+                 ?? Current.Defaults?.DefaultTitle,
             Description = JsonParserHelper.GetString(root, Fm.Description),
             Year = JsonParserHelper.GetInt32(root, Fm.Year),
             Rating = JsonParserHelper.GetDouble(root, Fm.Rating),
             Genres = ExtractStringArray(root, Fm.Genres, Fm.GenreName),
             DurationMinutes = JsonParserHelper.GetInt32(root, Fm.Duration),
             Director = ExtractFirstString(root, Fm.Directors, Fm.DirectorName),
-            Actors = ExtractStringArray(root, Fm.Actors, Fm.ActorName).Take(10).ToList(),
+            Actors = ExtractStringArray(root, Fm.Actors, Fm.ActorName)
+                        .Take(Current.Limits?.MaxActors ?? int.MaxValue).ToList(),
             CoverUrl = NormalizePosterUrl(JsonParserHelper.GetString(root, Fm.PosterUrl)),
             Format = DetermineFormat(root),
             Trailers = await GetTrailersAsync(externalId)
@@ -57,7 +58,8 @@ public class GenericMovieDetailService : IMovieDetailService
 
     public async Task<List<VideoDto>> GetTrailersAsync(string externalId)
     {
-        if (!Current.Urls.TryGetValue("GetVideos", out var videosTemplate) || string.IsNullOrEmpty(videosTemplate))
+        var vs = Current.VideoSettings;
+        if (vs == null || !Current.Urls.TryGetValue("GetVideos", out var videosTemplate) || string.IsNullOrEmpty(videosTemplate))
             return new();
 
         var url = $"{Current.BaseUrl}{videosTemplate.Replace("{id}", externalId)}";
@@ -70,27 +72,30 @@ public class GenericMovieDetailService : IMovieDetailService
 
         var trailers = new List<VideoDto>();
 
-        if (JsonParserHelper.TryGetProperty(root, "items", out var items) && items.ValueKind == JsonValueKind.Array)
+        if (JsonParserHelper.TryGetProperty(root, vs.RootArrayKey, out var items) && items.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in items.EnumerateArray())
             {
-                var site = JsonParserHelper.GetString(item, "site")?.ToLower();
-                if (site?.Contains("youtube") == true)
+                var site = JsonParserHelper.GetString(item, vs.SiteKey)?.ToLowerInvariant();
+                bool isAllowed = site != null && vs.AllowedSites?.Any(s => site.Contains(s, StringComparison.OrdinalIgnoreCase)) == true;
+
+                if (isAllowed)
                 {
-                    var name = JsonParserHelper.GetString(item, "name") ?? "Трейлер";
-                    var videoUrl = JsonParserHelper.GetString(item, "url");
-                    var ytId = ExtractYouTubeId(videoUrl);
+                    var name = JsonParserHelper.GetString(item, vs.NameKey) ?? Current.Defaults?.DefaultTitle;
+                    var videoUrl = JsonParserHelper.GetString(item, vs.UrlKey);
+                    var ytId = ExtractVideoId(videoUrl, vs.YouTubeIdRegex);
                     if (!string.IsNullOrEmpty(ytId))
                         trailers.Add(new VideoDto { Title = name, YouTubeId = ytId });
                 }
             }
         }
-        return trailers.Take(3).ToList();
+        return trailers.Take(Current.Limits?.MaxTrailers ?? int.MaxValue).ToList();
     }
 
     public async Task<List<MovieSummaryDto>> GetSimilarMoviesAsync(string externalId, int limit = 9)
     {
-        if (!Current.Urls.TryGetValue("GetSimilar", out var similarTemplate) || string.IsNullOrEmpty(similarTemplate))
+        var ss = Current.SimilarSettings;
+        if (ss == null || !Current.Urls.TryGetValue("GetSimilar", out var similarTemplate) || string.IsNullOrEmpty(similarTemplate))
             return new();
 
         var url = $"{Current.BaseUrl}{similarTemplate.Replace("{id}", externalId)}";
@@ -98,11 +103,7 @@ public class GenericMovieDetailService : IMovieDetailService
         try
         {
             var response = await _http.GetAsync(url);
-            if (!response.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"[Similar] API returned {response.StatusCode} for ID {externalId}, returning empty");
-                return new();
-            }
+            if (!response.IsSuccessStatusCode) return new();
 
             var json = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(json);
@@ -110,26 +111,26 @@ public class GenericMovieDetailService : IMovieDetailService
 
             var similar = new List<MovieSummaryDto>();
 
-            if (JsonParserHelper.TryGetProperty(root, "items", out var items) && items.ValueKind == JsonValueKind.Array)
+            if (JsonParserHelper.TryGetProperty(root, ss.RootArrayKey, out var items) && items.ValueKind == JsonValueKind.Array)
             {
-                foreach (var item in items.EnumerateArray().Take(limit))
+                foreach (var item in items.EnumerateArray().Take(ss.MaxResults ?? int.MaxValue))
                 {
-                    var id = JsonParserHelper.GetString(item, "filmId");
+                    var id = JsonParserHelper.GetString(item, ss.IdKey);
                     if (string.IsNullOrEmpty(id)) continue;
+
+                    var title = ss.TitleKeys?.Select(k => JsonParserHelper.GetString(item, k))
+                                .FirstOrDefault(t => !string.IsNullOrEmpty(t)) ?? Current.Defaults?.DefaultTitle;
 
                     similar.Add(new MovieSummaryDto
                     {
                         ExternalId = id,
-                        Title = JsonParserHelper.GetString(item, "nameRu")
-                             ?? JsonParserHelper.GetString(item, "nameEn")
-                             ?? "Без названия",
-                        CoverUrl = NormalizePosterUrl(JsonParserHelper.GetString(item, "posterUrl")),
+                        Title = title,
+                        CoverUrl = NormalizePosterUrl(JsonParserHelper.GetString(item, ss.PosterKey)),
                         Year = null,
                         Rating = null
                     });
                 }
             }
-            Console.WriteLine($"[Similar] Found {similar.Count} similar movies for {externalId}");
             return similar;
         }
         catch (Exception ex)
@@ -170,32 +171,35 @@ public class GenericMovieDetailService : IMovieDetailService
         return null;
     }
 
-    private static string? NormalizePosterUrl(string? url)
+    private string? NormalizePosterUrl(string? url)
     {
         if (string.IsNullOrEmpty(url)) return null;
-        return url.Replace("/300x450/", "/700x1000/")
-                  .Replace("http://", "https://");
+        var normalized = url;
+        foreach (var replacement in Current.PosterUrlNormalization?.Replacements ?? new Dictionary<string, string>())
+        {
+            normalized = normalized.Replace(replacement.Key, replacement.Value);
+        }
+        return normalized;
     }
 
     private ContentFormat DetermineFormat(JsonElement root)
     {
-        var type = JsonParserHelper.GetString(root, Fm.Type)?.ToUpper() ?? "";
-        if (Current.TypeMapping.TryGetValue(type, out var mapped))
+        var type = JsonParserHelper.GetString(root, Fm.Type)?.ToUpper() ?? string.Empty;
+        if (string.IsNullOrEmpty(type) || Current.FormatMapping == null)
+            return ContentFormat.Movie;
+
+        if (Current.FormatMapping.TryGetValue(type, out var formatStr) &&
+            Enum.TryParse(formatStr, out ContentFormat fmt))
         {
-            return mapped switch
-            {
-                "TvSeries" => ContentFormat.Series,
-                "Cartoon" => ContentFormat.Cartoon,
-                _ => ContentFormat.Movie
-            };
+            return fmt;
         }
         return ContentFormat.Movie;
     }
 
-    private static string ExtractYouTubeId(string? url)
+    private static string ExtractVideoId(string? url, string regexPattern)
     {
-        if (string.IsNullOrEmpty(url)) return "";
-        var match = Regex.Match(url, @"(?:v=|\/)([a-zA-Z0-9_-]{11})");
-        return match.Success ? match.Groups[1].Value : "";
+        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(regexPattern)) return string.Empty;
+        var match = Regex.Match(url, regexPattern);
+        return match.Success ? match.Groups[1].Value : string.Empty;
     }
 }

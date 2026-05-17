@@ -20,7 +20,6 @@ public class MoodAnalysisService : IMoodAnalysisService
     private ITransformer? _model;
     private PredictionEngine<ModelInput, ModelOutput>? _predictionEngine;
 
-    // Вложенные классы для ML
     private class ModelInput
     {
         [LoadColumn(0)]
@@ -49,11 +48,15 @@ public class MoodAnalysisService : IMoodAnalysisService
     {
         try
         {
+            var modelName = !string.IsNullOrEmpty(_moodOptions.ModelFileName)
+                ? _moodOptions.ModelFileName
+                : "MoodAnalyzer(700prim_na_class).zip";
+
             var possiblePaths = new[]
             {
-                Path.Combine(_env.ContentRootPath, "ML", "Models", "MoodAnalyzer(700prim_na_class).zip"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ML", "Models", "MoodAnalyzer(700prim_na_class).zip"),
-                Path.Combine(Directory.GetCurrentDirectory(), "ML", "Models", "MoodAnalyzer(700prim_na_class).zip")
+                Path.Combine(_env.ContentRootPath, "ML", "Models", modelName),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ML", "Models", modelName),
+                Path.Combine(Directory.GetCurrentDirectory(), "ML", "Models", modelName)
             };
 
             string? modelPath = null;
@@ -62,43 +65,42 @@ public class MoodAnalysisService : IMoodAnalysisService
                 if (File.Exists(path))
                 {
                     modelPath = path;
+                    Console.WriteLine($"[ML] Модель найдена: {path}");
                     break;
                 }
             }
 
             if (modelPath == null)
             {
-                Console.WriteLine("Модель не найдена");
+                Console.WriteLine($"[ML] ❌ Модель не найдена. Имя: {modelName}");
                 return;
             }
+
             _model = _mlContext.Model.Load(modelPath, out var schema);
             _predictionEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput>(_model);
-
-            Console.WriteLine("Модель загружена и готова к предсказаниям");
+            Console.WriteLine("[ML] ✅ Модель загружена и готова к предсказаниям");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Ошибка: {ex.Message}");
+            Console.WriteLine($"[ML] ❌ Ошибка загрузки модели: {ex.Message}");
         }
     }
 
     public (string Mood, float Confidence) AnalyzeMoodWithConfidence(string text)
     {
         if (_predictionEngine == null || string.IsNullOrWhiteSpace(text))
-        {
             return (string.Empty, 0f);
-        }
 
         try
         {
-            var prediction = _predictionEngine.Predict(new ModelInput { Text = text });
+            var prediction = _predictionEngine.Predict(new ModelInput { Text = text.Trim() });
             var confidence = prediction.Scores?.Length > 0 ? prediction.Scores[prediction.PredictedLabel] : 0f;
             string moodName = GetMoodName(prediction.PredictedLabel);
             return (moodName, confidence);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Ошибка предсказания: {ex.Message}");
+            Console.WriteLine($"[ML] ❌ Ошибка предсказания: {ex.Message}");
             return (string.Empty, 0f);
         }
     }
@@ -108,11 +110,13 @@ public class MoodAnalysisService : IMoodAnalysisService
         if (_predictionEngine == null || string.IsNullOrWhiteSpace(text))
             return (string.Empty, 0f, Array.Empty<float>());
 
-        var prediction = _predictionEngine.Predict(new ModelInput { Text = text });
+        var prediction = _predictionEngine.Predict(new ModelInput { Text = text.Trim() });
+        
+        var confidence = prediction.Scores?.Length > 0 ? prediction.Scores[prediction.PredictedLabel] : 0f;
+        string moodName = GetMoodName(prediction.PredictedLabel);
+
         var softmaxScores = Softmax(prediction.Scores);
-        var maxIndex = Array.IndexOf(softmaxScores, softmaxScores.Max());
-        var confidence = softmaxScores[maxIndex];
-        string moodName = GetMoodName((uint)maxIndex);
+
         return (moodName, confidence, softmaxScores);
     }
 
@@ -124,15 +128,16 @@ public class MoodAnalysisService : IMoodAnalysisService
 
     private float[] Softmax(float[] scores)
     {
+        if (scores == null || scores.Length == 0) return Array.Empty<float>();
         var max = scores.Max();
         var exp = scores.Select(x => (float)Math.Exp(x - max)).ToArray();
         var sum = exp.Sum();
-        return exp.Select(x => x / sum).ToArray();
+        return sum > 0 ? exp.Select(x => x / sum).ToArray() : Array.Empty<float>();
     }
 
     private string GetMoodName(uint index)
     {
-        var item = _moodOptions.Classes.FirstOrDefault(c => c.Index == index);
+        var item = _moodOptions.Classes?.FirstOrDefault(c => c.Index == index);
         return item?.Name ?? string.Empty;
     }
 }

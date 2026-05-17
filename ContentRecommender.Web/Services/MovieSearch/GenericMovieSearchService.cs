@@ -41,24 +41,24 @@ public class GenericMovieSearchService : IMovieSearchService
             .Distinct()
             .ToList();
 
-        if (!genreParams.Any())
-            genreParams.Add("1");
+        if (!genreParams.Any() && !string.IsNullOrEmpty(Current.Defaults?.FallbackGenreId))
+            genreParams.Add(Current.Defaults.FallbackGenreId);
+
+        Console.WriteLine($"[SearchByGenres] GenreParams=[{string.Join(",", genreParams)}], TargetType={type}");
 
         foreach (var genreParam in genreParams)
         {
             var url = _urlBuilder.BuildSearchUrl(genreId: int.TryParse(genreParam, out var id) ? id : null);
-            var fetched = await FetchPage(url, type, limit * 2, random);
+            var fetched = await FetchPage(url, type, limit * (Current.Defaults?.SearchMultiplier ?? 1), random);
+            Console.WriteLine($"[SearchByGenres] Fetched {fetched.Count} movies for genre {genreParam}");
             foreach (var movie in fetched)
             {
                 if (!allMovies.Any(m => m.ExternalId == movie.ExternalId))
                     allMovies.Add(movie);
             }
         }
-        var requestedLower = genres.Select(g => g.ToLower()).ToHashSet();
-        allMovies = allMovies
-            .Where(m => m.Genres.Any(g => requestedLower.Contains(g.ToLower())))
-            .ToList();
 
+        Console.WriteLine($"[SearchByGenres] Before dedup: {allMovies.Count}");
         return allMovies.OrderByDescending(m => m.Rating ?? 0).Take(limit).ToList();
     }
 
@@ -67,27 +67,44 @@ public class GenericMovieSearchService : IMovieSearchService
         if (string.IsNullOrWhiteSpace(query)) return new();
         var random = seed.HasValue ? new Random(seed.Value.GetHashCode()) : _rnd;
         var url = _urlBuilder.BuildSearchUrl(keyword: query);
-        return await FetchPage(url, type, limit * 2, random).ContinueWith(t => t.Result.Take(limit).ToList());
+        return await FetchPage(url, type, limit * (Current.Defaults?.SearchMultiplier ?? 1), random)
+            .ContinueWith(t => t.Result.Take(limit).ToList());
     }
 
     private async Task<List<Movie>> FetchPage(string url, ContentTypeCategory targetType, int limit, Random random)
     {
         try
         {
-
             var separator = url.Contains('?') ? '&' : '?';
-            url += $"{separator}page={random.Next(1, 4)}";
+            var pageRange = Current.Defaults?.PageRange ?? new[] { 1, 4 };
+            url += $"{separator}page={random.Next(pageRange[0], pageRange[1])}";
+
+            Console.WriteLine($"[FetchPage] Request: {url}");
 
             var response = await _http.GetAsync(url);
-            if (!response.IsSuccessStatusCode) return new();
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"[FetchPage] API error: {response.StatusCode}");
+                return new();
+            }
 
             var json = await response.Content.ReadAsStringAsync();
+            var movies = _parser.Parse(json, targetType);
 
-            return _parser.Parse(json, targetType).Take(limit).ToList();
+            Console.WriteLine($"[FetchPage] Parsed {movies.Count} movies, TargetType={targetType}");
+
+            if (targetType != ContentTypeCategory.Any)
+            {
+                var before = movies.Count;
+                movies = movies.Where(m => m.Category == targetType).ToList();
+                Console.WriteLine($"[FetchPage] Filtered by {targetType}: {before} → {movies.Count}");
+            }
+
+            return movies.Take(limit).ToList();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[MovieSearch] Ошибка: {ex.Message}");
+            Console.WriteLine($"[FetchPage] Exception: {ex.Message}");
             return new();
         }
     }
