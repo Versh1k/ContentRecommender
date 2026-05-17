@@ -76,13 +76,13 @@ public class ConfigurableBookParser : IBookResponseParser
         };
     }
 
-    private bool IsValidBook(Book book)
-    {
-        if (book.Pages.HasValue && (book.Pages < 20 || book.Pages > 2000)) return false;
-        if (book.Year.HasValue && book.Year < 1000) return false;
-        if (string.IsNullOrEmpty(book.CoverUrl)) return false;
-        return true;
-    }
+    //private bool IsValidBook(Book book)
+    //{
+    //    if (book.Pages.HasValue && (book.Pages < 20 || book.Pages > 2000)) return false;
+    //    if (book.Year.HasValue && book.Year < 1000) return false;
+    //    if (string.IsNullOrEmpty(book.CoverUrl)) return false;
+    //    return true;
+    //}
 
     private static List<string> GetStringArray(JsonElement element, string path)
     {

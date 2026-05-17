@@ -6,6 +6,7 @@
 @inject IJSRuntime JSRuntime
 @inject IOptions<MovieApiOptions> MovieOptions
 @inject IOptions<BookApiOptions> BookOptions
+@inject IOptions<MoodModelOptions> MoodOptions
 
 @if (Item != null)
 {
@@ -163,21 +164,13 @@ else
         await JSRuntime.InvokeVoidAsync("open", finalUrl, "_blank");
     }
 
-    private string GetMoodClass(MoodType? mood)
+    private string GetMoodClass(string? mood)
     {
-        if (mood == null) return "mood-calm";
-        return mood switch
-        {
-            MoodType.Epic => "mood-epic",
-            MoodType.Romantic => "mood-romantic",
-            MoodType.Mysterious => "mood-mysterious",
-            MoodType.Funny => "mood-funny",
-            MoodType.Sad => "mood-sad",
-            MoodType.Inspiring => "mood-inspiring",
-            MoodType.Tense => "mood-tense",
-            MoodType.Everyday => "mood-everyday",
-            _ => "mood-calm"
-        };
+        if (string.IsNullOrEmpty(mood))
+            return MoodOptions.Value.DefaultCssClass;
+
+        var moodItem = MoodOptions.Value.Classes.FirstOrDefault(c => c.Name == mood);
+        return moodItem?.CssClass ?? MoodOptions.Value.DefaultCssClass;
     }
 
     private string? GetSecondaryInfo()

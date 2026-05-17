@@ -1,5 +1,6 @@
 ﻿public class MoodModelOptions
 {
+    public string DefaultCssClass { get; set; }
     public List<MoodClassItem> Classes { get; set; } = new();
 }
 

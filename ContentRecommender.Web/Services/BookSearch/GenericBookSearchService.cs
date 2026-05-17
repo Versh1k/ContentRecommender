@@ -66,8 +66,11 @@ public class GenericBookSearchService : IBookSearchService
     private string BuildUrl(string query, int limit)
     {
         var template = Current.Urls["SearchByText"];
-        return template.Replace("{query}", Uri.EscapeDataString(query))
-                       .Replace("{limit}", limit.ToString());
+        var url = template.Replace("{query}", Uri.EscapeDataString(query))
+                          .Replace("{limit}", limit.ToString());
+        if (!string.IsNullOrEmpty(Current.ApiKey))
+            url += $"&key={Current.ApiKey}";
+        return url;
     }
 
     private async Task<List<Book>> FetchPage(string url, int limit)

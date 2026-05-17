@@ -1,6 +1,7 @@
 ﻿namespace ContentRecommender.Core.Models;
 public enum ContentTypeCategory
 {
+    Any = 0,
     FeatureFilm,   
     ShortFilm,     
     TvSeries,      
