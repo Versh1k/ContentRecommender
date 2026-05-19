@@ -1,8 +1,4 @@
-﻿/* ========================================
-   ===== УНИВЕРСАЛЬНАЯ КАРТОЧКА =====
-   ======================================== */
-
-.content-card {
+﻿.content-card {
     position: relative;
     background: var(--bg-secondary, #1a1a2e);
     border-radius: 20px;
@@ -36,7 +32,6 @@
         z-index: 5;
     }
 
-/* ===== ЦВЕТА НАСТРОЕНИЙ ===== */
 .mood-epic::before {
     --mood-color: #ff6b35;
 }
@@ -69,7 +64,6 @@
     --mood-color: #4cc9f0;
 }
 
-/* ===== КОНТЕЙНЕР ОБЛОЖКИ ===== */
 .card-cover-container {
     width: 100%;
     padding-top: 150%;
@@ -95,7 +89,6 @@
     transform: scale(1.05);
 }
 
-/* ===== ЗАГЛУШКА ===== */
 .image-fallback {
     position: absolute;
     inset: 0;
@@ -120,7 +113,6 @@
         display: block !important;
     }
 
-/* ===== ОВЕРЛЕЙ ===== */
 .cover-overlay {
     position: absolute;
     inset: 0;
@@ -152,7 +144,6 @@
     color: rgba(255, 255, 255, 0.95);
 }
 
-/* ===== ИНДИКАТОР ===== */
 .detail-hint {
     position: absolute;
     top: 0.75rem;
@@ -174,7 +165,6 @@
     opacity: 1;
 }
 
-/* ===== КОНТЕНТ ===== */
 .card-content {
     padding: 1.8rem;
     flex: 1;
@@ -230,7 +220,6 @@
         color: #4cc9f0;
     }
 
-/* ===== КНОПКИ ===== */
 .favorite-btn {
     position: absolute;
     left: 0.75rem;
@@ -305,7 +294,6 @@
         display: block !important;
     }
 
-/* ===== СЕТКИ ===== */
 .cards-grid, .favorites-grid {
     display: grid !important;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
@@ -316,7 +304,6 @@
     min-height: 100px !important;
 }
 
-/* ===== АНИМАЦИИ ===== */
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -334,7 +321,6 @@
     animation: fadeIn 0.4s ease forwards !important;
 }
 
-/* ===== АДАПТИВНОСТЬ ===== */
 @media (max-width: 768px) {
     .cards-grid, .favorites-grid {
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
@@ -382,4 +368,63 @@
         font-size: 0.65rem;
         padding: 3px 10px;
     }
+}
+
+.status-tag {
+    font-size: 0.7rem;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 600;
+
+    letter-spacing: 0.5px;
+}
+
+    .status-tag.status-planned {
+        background: #ffc107;
+        color: #000;
+    }
+
+    .status-tag.status-inprogress {
+        background: #2196f3;
+        color: #fff;
+    }
+
+    .status-tag.status-completed {
+        background: #9c27b0;
+        color: #fff;
+    }
+
+    .status-tag.status-postponed {
+        background: #ff9800;
+        color: #000;
+    }
+
+    .status-tag.status-dropped {
+        background: #f44336;
+        color: #fff;
+    }
+.status-dropdown-item {
+    text-transform: none;
+    font-size: 0.75rem;
+}
+.content-card.format-movie::before {
+    background: #2196f3;
+}
+
+.content-card.format-series::before {
+    background: #4caf50;
+}
+
+.content-card.format-cartoon::before {
+    background: #ff9800;
+}
+
+.content-card.format-book::before {
+    background: #9c27b0;
+}
+.card-status-wrapper {
+    position: absolute;
+    bottom: 1rem;
+    left: 1rem;
+    z-index: 20;
 }

@@ -10,7 +10,8 @@ public interface IFavoritesService
     Task<bool> ToggleFavoriteAsync(ContentItem item);
     Task<HashSet<string>> GetUserFavoriteKeysAsync();
     bool IsFavorite(string externalId, string source, HashSet<string> favoriteKeys);
-    Task<bool> IsFavoriteAsync(string externalId, string source); // новый метод
+    Task<bool> IsFavoriteAsync(string externalId, string source);
+    Task<bool> UpdateStatusAsync(string externalId, string source, FavoriteStatus status);
     event Action? OnFavoritesChanged;
 }
 
@@ -100,7 +101,8 @@ public class FavoritesService : IFavoritesService
                     Format = actualFormat,
                     Title = item.Title ?? "Без названия",
                     CoverUrl = item.CoverUrl,
-                    AddedAt = DateTime.UtcNow
+                    AddedAt = DateTime.UtcNow,
+                    Status = FavoriteStatus.Planned
                 };
 
                 if (await _repository.AddToFavoritesAsync(userId, favorite))
@@ -110,13 +112,14 @@ public class FavoritesService : IFavoritesService
                     OnFavoritesChanged?.Invoke();
                     return true;
                 }
+
             }
 
             return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Ошибка избранного: {ex.Message}");
+            Console.WriteLine($" Ошибка избранного: {ex.Message}");
 
             if (ex.Message.Contains("duplicate") || ex.Message.Contains("уникальности") || ex.Message.Contains("23505"))
             {
@@ -138,7 +141,12 @@ public class FavoritesService : IFavoritesService
             _lock.Release();
         }
     }
-
+    public async Task<bool> UpdateStatusAsync(string externalId, string source, FavoriteStatus status)
+    {
+        var userId = await GetCurrentUserIdAsync();
+        if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(externalId) || string.IsNullOrEmpty(source)) return false;
+        return await _repository.UpdateStatusAsync(userId, externalId, source, status);
+    }
     public async Task<HashSet<string>> GetUserFavoriteKeysAsync()
     {
         await _lock.WaitAsync();

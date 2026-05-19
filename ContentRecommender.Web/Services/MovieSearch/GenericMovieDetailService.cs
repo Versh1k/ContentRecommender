@@ -52,60 +52,34 @@ public class GenericMovieDetailService : IMovieDetailService
                         .Take(Current.Limits?.MaxActors ?? int.MaxValue).ToList(),
             CoverUrl = NormalizePosterUrl(JsonParserHelper.GetString(root, Fm.PosterUrl)),
             Format = DetermineFormat(root),
-            Trailers = await GetTrailersAsync(externalId)
         };
-    }
-
-    public async Task<List<VideoDto>> GetTrailersAsync(string externalId)
-    {
-        var vs = Current.VideoSettings;
-        if (vs == null || !Current.Urls.TryGetValue("GetVideos", out var videosTemplate) || string.IsNullOrEmpty(videosTemplate))
-            return new();
-
-        var url = $"{Current.BaseUrl}{videosTemplate.Replace("{id}", externalId)}";
-        var response = await _http.GetAsync(url);
-        if (!response.IsSuccessStatusCode) return new();
-
-        var json = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-
-        var trailers = new List<VideoDto>();
-
-        if (JsonParserHelper.TryGetProperty(root, vs.RootArrayKey, out var items) && items.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in items.EnumerateArray())
-            {
-                var site = JsonParserHelper.GetString(item, vs.SiteKey)?.ToLowerInvariant();
-                bool isAllowed = site != null && vs.AllowedSites?.Any(s => site.Contains(s, StringComparison.OrdinalIgnoreCase)) == true;
-
-                if (isAllowed)
-                {
-                    var name = JsonParserHelper.GetString(item, vs.NameKey) ?? Current.Defaults?.DefaultTitle;
-                    var videoUrl = JsonParserHelper.GetString(item, vs.UrlKey);
-                    var ytId = ExtractVideoId(videoUrl, vs.YouTubeIdRegex);
-                    if (!string.IsNullOrEmpty(ytId))
-                        trailers.Add(new VideoDto { Title = name, YouTubeId = ytId });
-                }
-            }
-        }
-        return trailers.Take(Current.Limits?.MaxTrailers ?? int.MaxValue).ToList();
     }
 
     public async Task<List<MovieSummaryDto>> GetSimilarMoviesAsync(string externalId, int limit = 9)
     {
         var ss = Current.SimilarSettings;
-        if (ss == null || !Current.Urls.TryGetValue("GetSimilar", out var similarTemplate) || string.IsNullOrEmpty(similarTemplate))
+        if (ss == null || !Current.Urls.TryGetValue("Похожие", out var similarTemplate) || string.IsNullOrEmpty(similarTemplate))
+        {
+            Console.WriteLine($"[Similar] Нет настроек для провайдера {_options.ActiveProvider}");
             return new();
+        }
 
         var url = $"{Current.BaseUrl}{similarTemplate.Replace("{id}", externalId)}";
+        Console.WriteLine($"[Similar] Запрос URL-адреса: {url}");
 
         try
         {
             var response = await _http.GetAsync(url);
-            if (!response.IsSuccessStatusCode) return new();
+            Console.WriteLine($"[Similar] Статус ответа: {response.StatusCode}");
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[Similar] Ошибка: {error}");
+                return new();
+            }
 
             var json = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"[Similar] JSON: {json.Substring(0, Math.Min(json.Length, 200))}");
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
@@ -113,9 +87,11 @@ public class GenericMovieDetailService : IMovieDetailService
 
             if (JsonParserHelper.TryGetProperty(root, ss.RootArrayKey, out var items) && items.ValueKind == JsonValueKind.Array)
             {
-                foreach (var item in items.EnumerateArray().Take(ss.MaxResults ?? int.MaxValue))
+                Console.WriteLine($"[Similar] Найдено {items.GetArrayLength()} в '{ss.RootArrayKey}'");
+                foreach (var item in items.EnumerateArray().Take(limit))
                 {
                     var id = JsonParserHelper.GetString(item, ss.IdKey);
+                    Console.WriteLine($"[Similar] Items: {id}");
                     if (string.IsNullOrEmpty(id)) continue;
 
                     var title = ss.TitleKeys?.Select(k => JsonParserHelper.GetString(item, k))
@@ -131,11 +107,16 @@ public class GenericMovieDetailService : IMovieDetailService
                     });
                 }
             }
+            else
+            {
+                Console.WriteLine($"[Similar] Массив '{ss.RootArrayKey}' не найден");
+            }
+            Console.WriteLine($"[Similar] Возвращено {similar.Count} похожих");
             return similar;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Similar] Error for {externalId}: {ex.Message}");
+            Console.WriteLine($"[Similar] Ошибка {externalId}: {ex.Message}");
             return new();
         }
     }
@@ -194,12 +175,5 @@ public class GenericMovieDetailService : IMovieDetailService
             return fmt;
         }
         return ContentFormat.Movie;
-    }
-
-    private static string ExtractVideoId(string? url, string regexPattern)
-    {
-        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(regexPattern)) return string.Empty;
-        var match = Regex.Match(url, regexPattern);
-        return match.Success ? match.Groups[1].Value : string.Empty;
     }
 }

@@ -10,7 +10,7 @@
 
 @if (Item != null)
 {
-    <div class="content-card @GetMoodClass(Item.MoodTags?.FirstOrDefault())" @onclick="NavigateToDetail">
+    <div class="content-card @GetMoodClass(Item.MoodTags?.FirstOrDefault()) @GetFormatClass()" @onclick="NavigateToDetail">
         <div class="card-cover-container">
             @if (!string.IsNullOrEmpty(Item.CoverUrl))
             {
@@ -51,7 +51,7 @@
             </div>
         </div>
 
-        <div class="card-content">
+        <div class="card-content" style="position: relative;">
             <h3 class="card-title">@Item.Title</h3>
 
             <div class="card-meta">
@@ -80,21 +80,44 @@
                 </div>
             }
 
-            @if (Item.Genres?.Any() == true)
-            {
-                <div class="card-genres">
+            <div class="card-genres">
+                @if (Status.HasValue)
+                {
+                    <div class="card-status-wrapper">
+                        <div class="status-dropdown-container dropup" @onclick:stopPropagation="true">
+                            <span class="genre-tag status-tag @GetStatusClass(Status.Value)"
+                                  @onclick="ToggleStatusDropdown">
+                                @GetStatusLabel(Status.Value)
+                            </span>
+                            @if (isStatusDropdownOpen)
+                            {
+                                <div class="status-dropdown-menu dropup-menu">
+                                    @foreach (var status in Enum.GetValues<FavoriteStatus>())
+                                    {
+                                        <div class="status-dropdown-item @(status == Status.Value ? "active" : "")"
+                                             @onclick="() => SelectStatus(status)">
+                                            @GetStatusLabel(status)
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (Item.Genres?.Any() == true)
+                {
                     @foreach (var genre in Item.Genres.Take(3))
                     {
                         <span class="genre-tag">@genre</span>
                     }
-                </div>
-            }
+                }
+            </div>
         </div>
 
         <button class="source-icon"
                 @onclick="OpenInNewTab"
                 @onclick:stopPropagation="true"
-                title="Открыть в источнике">
+                title="@GetExternalButtonText()">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                 <polyline points="15 3 21 3 21 9"></polyline>
@@ -103,26 +126,55 @@
         </button>
     </div>
 }
-else
-{
-    Console.WriteLine("⚠️ ContentCard: Item is null!");
-}
 
 @code {
     [Parameter] public ContentItem? Item { get; set; }
     [Parameter] public EventCallback<ContentItem> OnFavoriteChanged { get; set; }
     [Parameter] public bool IsFavorite { get; set; }
+    [Parameter] public FavoriteStatus? Status { get; set; }
+
+    private bool isStatusDropdownOpen = false;
+
+    private void ToggleStatusDropdown()
+    {
+        isStatusDropdownOpen = !isStatusDropdownOpen;
+    }
+
+    private async Task SelectStatus(FavoriteStatus status)
+    {
+        isStatusDropdownOpen = false;
+        Status = status;
+        if (OnStatusChanged.HasDelegate)
+            await OnStatusChanged.InvokeAsync(status);
+    }
+
+    [Parameter] public EventCallback<FavoriteStatus> OnStatusChanged { get; set; }
+
+    private string GetStatusClass(FavoriteStatus status) => status switch
+    {
+        FavoriteStatus.Planned => "status-planned",
+        FavoriteStatus.InProgress => "status-inprogress",
+        FavoriteStatus.Completed => "status-completed",
+        FavoriteStatus.Postponed => "status-postponed",
+        FavoriteStatus.Dropped => "status-dropped",
+        _ => ""
+    };
+
+    private string GetStatusLabel(FavoriteStatus status) => status switch
+    {
+        FavoriteStatus.Planned => "В планах",
+        FavoriteStatus.InProgress => "В процессе",
+        FavoriteStatus.Completed => "Просмотрено",
+        FavoriteStatus.Postponed => "Отложено",
+        FavoriteStatus.Dropped => "Брошено",
+        _ => ""
+    };
 
     private void NavigateToDetail()
     {
         if (Item != null && !string.IsNullOrEmpty(Item.Source) && !string.IsNullOrEmpty(Item.ExternalId))
         {
-            Console.WriteLine($"[ContentCard] Navigating to /content/{Item.Source.ToLower()}/{Item.ExternalId}");
             Navigation.NavigateTo($"/content/{Item.Source.ToLower()}/{Item.ExternalId}");
-        }
-        else
-        {
-            Console.WriteLine($"[ContentCard] Cannot navigate: Source='{Item?.Source}', ExternalId='{Item?.ExternalId}'");
         }
     }
 
@@ -130,45 +182,75 @@ else
     {
         if (Item != null && OnFavoriteChanged.HasDelegate)
         {
-            Console.WriteLine($"❤️ ToggleFavorite вызван для: {Item.Title}");
             await OnFavoriteChanged.InvokeAsync(Item);
-        }
-        else
-        {
-            Console.WriteLine($"⚠️ OnFavoriteChanged.HasDelegate = {OnFavoriteChanged.HasDelegate}");
         }
     }
 
     private async Task OpenInNewTab()
     {
-        if (Item == null) return;
+        if (Item == null || string.IsNullOrEmpty(Item.ExternalId) || string.IsNullOrEmpty(Item.Source))
+            return;
 
-        var externalId = Item.ExternalId ?? "";
-        var source = Item.Source?.ToLowerInvariant();
-
-        ProviderConfig? provider = null;
-
-        if (source == MovieOptions.Value.ActiveProvider.ToLowerInvariant())
+        var url = GetExternalUrl();
+        if (!string.IsNullOrEmpty(url) && url != "#")
+            await JSRuntime.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+    }
+    private string GetFormatClass()
+    {
+        if (Status.HasValue)
         {
-            provider = MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider];
+            return Item?.Format switch
+            {
+                ContentFormat.Movie => "format-movie",
+                ContentFormat.Series => "format-series",
+                ContentFormat.Cartoon => "format-cartoon",
+                ContentFormat.Book => "format-book",
+                _ => ""
+            };
         }
-        else if (source == BookOptions.Value.ActiveProvider.ToLowerInvariant())
+        return "";
+    }
+    private string GetExternalUrl()
+    {
+        if (string.IsNullOrEmpty(Item?.ExternalId) || string.IsNullOrEmpty(Item?.Source))
+            return "#";
+
+        if (Item.Format == ContentFormat.Book)
         {
-            provider = BookOptions.Value.Providers[BookOptions.Value.ActiveProvider];
+            var cfg = BookOptions.Value.Providers.TryGetValue(Item.Source, out var bc) ? bc : null;
+            if (cfg == null) return "#";
+            var template = cfg.ExternalUrlTemplate;
+            return string.IsNullOrEmpty(template)
+                ? $"https://books.google.com/books?id={Item.ExternalId}"
+                : template.Replace("{id}", Item.ExternalId).Replace("{BaseUrl}", cfg.BaseUrl);
         }
+        else
+        {
+            var cfg = MovieOptions.Value.Providers.TryGetValue(Item.Source, out var mc) ? mc : null;
+            if (cfg == null) return "#";
+            var template = mc.ExternalUrlTemplate;
+            return string.IsNullOrEmpty(template)
+                ? $"https://www.kinopoisk.ru/film/{Item.ExternalId}/"
+                : template.Replace("{id}", Item.ExternalId).Replace("{BaseUrl}", mc.BaseUrl);
+        }
+    }
 
-        if (provider == null) return;
-
-        string finalUrl = $"{provider.BaseUrl}/{externalId}";
-
-        await JSRuntime.InvokeVoidAsync("open", finalUrl, "_blank");
+    private string GetExternalButtonText()
+    {
+        if (string.IsNullOrEmpty(Item?.Source)) return "Открыть";
+        if (Item.Format == ContentFormat.Book)
+        {
+            var cfg = BookOptions.Value.Providers.TryGetValue(Item.Source, out var bc) ? bc : null;
+            return string.IsNullOrEmpty(cfg?.ExternalButtonText) ? "Читать" : cfg.ExternalButtonText;
+        }
+        var mCfg = MovieOptions.Value.Providers.TryGetValue(Item.Source, out var mc) ? mc : null;
+        return string.IsNullOrEmpty(mCfg?.ExternalButtonText) ? "Открыть" : mCfg.ExternalButtonText;
     }
 
     private string GetMoodClass(string? mood)
     {
         if (string.IsNullOrEmpty(mood))
             return MoodOptions.Value.DefaultCssClass;
-
         var moodItem = MoodOptions.Value.Classes.FirstOrDefault(c => c.Name == mood);
         return moodItem?.CssClass ?? MoodOptions.Value.DefaultCssClass;
     }
@@ -177,10 +259,8 @@ else
     {
         if (Item is Movie movie && !string.IsNullOrWhiteSpace(movie.Director))
             return $"Реж. {movie.Director}";
-
         if (Item is Book book && !string.IsNullOrWhiteSpace(book.Author))
             return book.Author;
-
         return null;
     }
 }

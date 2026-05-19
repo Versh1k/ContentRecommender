@@ -43,7 +43,8 @@ public class SearchStateService : ISearchStateService
                     CoverUrl = r.CoverUrl,
                     Year = r.Year,
                     Rating = r.Rating,
-                    Format = r.Format
+                    Format = r.Format,
+                    Genres = r.Genres
                 }).Take(20).ToList()
             };
 
@@ -52,7 +53,7 @@ public class SearchStateService : ISearchStateService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($" Ошибка сохранения состояния: {ex.Message}");
+            Console.WriteLine($"Ошибка сохранения состояния: {ex.Message}");
         }
     }
 
@@ -90,7 +91,7 @@ public class SearchStateService : ISearchStateService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($" Ошибка очистки состояния: {ex.Message}");
+            Console.WriteLine($"Ошибка очистки состояния: {ex.Message}");
         }
     }
 
@@ -114,5 +115,6 @@ public class SearchStateService : ISearchStateService
         public int? Year { get; set; }
         public double? Rating { get; set; }
         public ContentFormat Format { get; set; }
+        public List<string>? Genres { get; set; }
     }
 }

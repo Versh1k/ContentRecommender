@@ -2,17 +2,20 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
-@using Microsoft.Extensions.Options
 @using ContentRecommender.Core.Models
 @using ContentRecommender.Core.Services
 @using ContentRecommender.Core.Helpers
+@using ContentRecommender.Core.Configuration
 @using ContentRecommender.Web.ML.Services
 @using ContentRecommender.Web.Services
 @using ContentRecommender.Web.Components.Shared
 @using ContentRecommender.Data.Repositories
+@using Microsoft.Extensions.Options
 
 @attribute [Authorize]
 
+@inject IOptions<MovieApiOptions> MovieApiOptions
+@inject IOptions<BookApiOptions> BookApiOptions
 @inject ISearchStateService SearchStateService
 @inject IFavoritesService FavoritesService
 @inject IMoodAnalysisService MoodAnalysisService
@@ -41,6 +44,15 @@
         </h1>
 
         <div class="type-selector">
+            <button class="random-btn" @onclick="RandomSearch" title="Случайный выбор">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 3 21 3 21 8" />
+                    <line x1="4" y1="20" x2="21" y2="3" />
+                    <polyline points="21 16 21 21 16 21" />
+                    <line x1="15" y1="15" x2="21" y2="21" />
+                    <line x1="4" y1="4" x2="9" y2="9" />
+                </svg>
+            </button>
             <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.All ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.All)">Всё</button>
             <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.Movies ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.Movies)"> Фильмы</button>
             <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.TvSeries ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.TvSeries)"> Сериалы</button>
@@ -139,9 +151,7 @@
 @code {
     private enum SearchMode { ByMood, ByKeywords }
 
-    // 🔥 Хелпер для доступа к настройкам
     private SearchSettings Settings => SearchSettingsOptions.Value;
-
     private SearchMode currentSearchMode = SearchMode.ByMood;
     private string userInput = "";
     private string keywordSearchQuery = "";
@@ -188,7 +198,7 @@
                     {
                         currentSearchMode = SearchMode.ByMood;
                         userInput = savedState.Query;
-                        detectedMood = !string.IsNullOrEmpty(savedState.Mood) ? savedState.Mood : null;
+                        detectedMood = savedState.Mood;
                     }
                     else
                     {
@@ -204,9 +214,29 @@
                     results = savedState.SavedResults.Select(r =>
                     {
                         if (r.Format == ContentFormat.Book)
-                            return new Book { ExternalId = r.ExternalId, Source = r.Source, Format = r.Format, Title = r.Title, CoverUrl = r.CoverUrl, Year = r.Year, Rating = r.Rating } as ContentItem;
+                            return new Book
+                            {
+                                ExternalId = r.ExternalId,
+                                Source = r.Source,
+                                Format = r.Format,
+                                Title = r.Title,
+                                CoverUrl = r.CoverUrl,
+                                Year = r.Year,
+                                Rating = r.Rating,
+                                Genres = r.Genres ?? new List<string>()
+                            } as ContentItem;
                         else
-                            return new Movie { ExternalId = r.ExternalId, Source = r.Source, Format = r.Format, Title = r.Title, CoverUrl = r.CoverUrl, Year = r.Year, Rating = r.Rating } as ContentItem;
+                            return new Movie
+                            {
+                                ExternalId = r.ExternalId,
+                                Source = r.Source,
+                                Format = r.Format,
+                                Title = r.Title,
+                                CoverUrl = r.CoverUrl,
+                                Year = r.Year,
+                                Rating = r.Rating,
+                                Genres = r.Genres ?? new List<string>()
+                            } as ContentItem;
                     }).ToList();
 
                     Console.WriteLine($"Восстановлено {results.Count} результатов");
@@ -282,6 +312,40 @@
         StateHasChanged();
     }
 
+    private async Task RandomSearch()
+    {
+        var random = new Random();
+        var types = Enum.GetValues<SearchCriteria.SearchContentType>();
+        var randomType = types[random.Next(types.Length)];
+        selectedContentType = randomType;
+
+        Dictionary<string, string>? genreSource = null;
+        if (randomType == SearchCriteria.SearchContentType.AllBooks)
+        {
+            var provider = BookApiOptions.Value.Providers.GetValueOrDefault(BookApiOptions.Value.ActiveProvider);
+            genreSource = provider?.GenreParameters;
+        }
+        else
+        {
+            var provider = MovieApiOptions.Value.Providers.GetValueOrDefault(MovieApiOptions.Value.ActiveProvider);
+            genreSource = provider?.GenreParameters;
+        }
+
+        if (genreSource == null || genreSource.Count == 0)
+        {
+            currentSearchQuery = "комедия";
+        }
+        else
+        {
+            var keys = genreSource.Keys.ToList();
+            currentSearchQuery = keys[random.Next(keys.Count)];
+        }
+
+        currentSearchMode = SearchMode.ByMood;
+
+        await PerformSearch();
+    }
+
     private async Task PerformSearch()
     {
         if (string.IsNullOrWhiteSpace(currentSearchQuery))
@@ -308,7 +372,6 @@
             {
                 var (mlMood, mlConfidence, mlScores) = MoodAnalysisService.AnalyzeMoodFull(currentSearchQuery);
                 detectedMood = mlMood;
-
                 var genres = MlGenreMapper.GetGenresFromMoodScores(
                     mlMood,
                     mlScores,
@@ -355,7 +418,6 @@
                         searchSeed);
                     Console.WriteLine($"[Search] MovieSearchService вернул {movies.Count} фильмов");
                     finalResults.AddRange(movies);
-                    Console.WriteLine($"[TextSearch] Найдено фильмов: {movies.Count}");
                 }
 
                 if (ShouldSearchBooks(selectedContentType))
@@ -371,7 +433,6 @@
                 .OrderByDescending(x => x.Rating ?? 0)
                 .Take(Settings.Limits.MaxDisplayResults)
                 .ToList();
-
             Console.WriteLine($"[Search] Итоговое количество для отображения: {results.Count}");
 
             if (!results.Any())

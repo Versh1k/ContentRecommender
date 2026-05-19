@@ -98,50 +98,45 @@ else
             </div>
         </div>
 
-        @if (content.SimilarItems?.Any() == true)
+        @if (content.SimilarItems != null && content.SimilarItems.Any())
         {
             <div class="similar-section">
-                <h2>Похожие</h2>
-                <div class="carousel-wrapper" @ref="carouselWrapper">
-                    <button class="carousel-btn prev"
-                            @onclick="(() => ScrollCarousel(-1))"
-                            disabled="@(_carouselIndex == 0)">
-                        ❮
+                <h2>Похожие рекомендации</h2>
+                <div class="carousel-wrapper">
+                    <button class="carousel-btn prev" @onclick="() => ScrollCarousel(-1)" disabled="@(_currentIndex == 0)">
+                        ‹
                     </button>
-                    <div class="carousel-track" style="transform: translateX(-@(_carouselIndex * 33.333)%)">
-                        @foreach (var item in (content?.SimilarItems ?? Enumerable.Empty<ContentDetailDto>()).Take(9))
+                    <div class="carousel-track" style="transform: translateX(-@(ScrollOffsetPx)px);">
+                        @foreach (var similar in content.SimilarItems.Take(MaxItems))
                         {
-                            <div class="carousel-card" @onclick="(() => NavigateToContent(item.Source, item.ExternalId))">
-                                @if (!string.IsNullOrEmpty(item.CoverUrl))
+                            <div class="carousel-card" @onclick="() => NavigateToContent(similar.Source, similar.ExternalId)">
+                                @if (!string.IsNullOrEmpty(similar.CoverUrl))
                                 {
-                                    <img src="@item.CoverUrl" alt="@item.Title" loading="lazy" />
+                                    <img src="@similar.CoverUrl" alt="@similar.Title" />
+                                }
+                                else
+                                {
+                                    <div class="no-poster-small">🎬</div>
                                 }
                                 <div class="carousel-info">
-                                    <h4>@item.Title</h4>
-                                    @if (item.Rating.HasValue)
-                                    {
-                                        <span class="carousel-rating">⭐ @item.Rating.Value.ToString("F1")</span>
-                                    }
-                                    @if (item.Year.HasValue)
-                                    {
-                                        <span class="carousel-year">@item.Year</span>
-                                    }
+                                    <h4>@similar.Title</h4>
+                                    <div class="carousel-meta">
+                                        @if (similar.Rating.HasValue)
+                                        {
+                                            <span class="carousel-rating">⭐ @similar.Rating.Value.ToString("F1")</span>
+                                        }
+                                        @if (similar.Year.HasValue)
+                                        {
+                                            <span class="carousel-year">@similar.Year</span>
+                                        }
+                                    </div>
                                 </div>
                             </div>
                         }
                     </div>
-                    <button class="carousel-btn next"
-                            @onclick="(() => ScrollCarousel(1))"
-                            disabled="@(_carouselIndex >= MaxCarouselIndex)">
-                        ❯
+                    <button class="carousel-btn next" @onclick="() => ScrollCarousel(1)" disabled="@(_currentIndex >= MaxIndex)">
+                        ›
                     </button>
-                </div>
-                <div class="carousel-dots">
-                    @for (var i = 0; i <= MaxCarouselIndex; i++)
-                    {
-                        <span class="carousel-dot @(_carouselIndex == i ? "active" : "")"
-                              @onclick="(() => GoToSlide(i))"></span>
-                    }
                 </div>
             </div>
         }
@@ -154,29 +149,58 @@ else
 
     private ContentDetailDto? content;
     private bool isLoading = true;
-    private ElementReference carouselWrapper;
-    private int _carouselIndex = 0;
-    private const int ItemsPerView = 3;
-    private const int MaxItems = 9;
-
-    private int MaxCarouselIndex => Math.Max(0, ((content?.SimilarItems?.Count ?? 0) > 9 ? 9 : content?.SimilarItems?.Count ?? 0) / 3 - 1);
+    private int _currentIndex = 0;
+    private const int MaxItems = 20;
+    private int _cardWidth = 200;
+    private int _gap = 20;
+    private int MaxIndex => Math.Max(0, (content?.SimilarItems?.Count ?? 0) - 1);
+    private int ScrollOffsetPx => _currentIndex * (_cardWidth + _gap);
 
     protected override async Task OnInitializedAsync() => await LoadContent();
+    protected override async Task OnParametersSetAsync() => await LoadContent();
 
     private async Task LoadContent()
     {
         try
         {
             isLoading = true;
+            _currentIndex = 0;
             content = await DetailService.GetContentDetailsAsync(Source, Id);
             if (content != null)
             {
                 content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, MaxItems);
                 content.IsFavorite = await FavoritesService.IsFavoriteAsync(content.ExternalId, content.Source);
             }
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                setTimeout(() => {
+                    const card = document.querySelector('.carousel-card');
+                    if (card) {
+                        const width = card.offsetWidth;
+                        const style = getComputedStyle(card.parentElement);
+                        const gap = parseFloat(style.gap) || 20;
+                        DotNet.invokeMethodAsync('ContentRecommender.Web', 'SetCardDimensions', width, gap);
+                    }
+                }, 100);
+            ");
         }
-        catch (Exception ex) { Console.WriteLine($"Ошибка: {ex.Message}"); content = null; }
-        finally { isLoading = false; }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Ошибка: {ex.Message}");
+            content = null;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void SetCardDimensions(int width, int gap)
+    {
+        _cardWidth = width;
+        _gap = gap;
+        StateHasChanged();
     }
 
     private async Task ToggleFavorite()
@@ -184,31 +208,56 @@ else
         if (content == null) return;
         ContentItem item = content.Format switch
         {
-            ContentFormat.Book => new Book { ExternalId = content.ExternalId, Source = content.Source, Format = content.Format, Title = content.Title, CoverUrl = content.CoverUrl, Author = content.Author, Pages = content.Pages, Year = content.Year, Rating = content.Rating, Genres = content.Genres, Description = content.Description },
-            _ => new Movie { ExternalId = content.ExternalId, Source = content.Source, Format = content.Format, Title = content.Title, CoverUrl = content.CoverUrl, Director = content.Director, DurationMinutes = content.DurationMinutes, Year = content.Year, Rating = content.Rating, Genres = content.Genres, Description = content.Description }
+            ContentFormat.Book => new Book
+            {
+                ExternalId = content.ExternalId,
+                Source = content.Source,
+                Format = content.Format,
+                Title = content.Title,
+                CoverUrl = content.CoverUrl,
+                Author = content.Author,
+                Pages = content.Pages,
+                Year = content.Year,
+                Rating = content.Rating,
+                Genres = content.Genres,
+                Description = content.Description
+            },
+            _ => new Movie
+            {
+                ExternalId = content.ExternalId,
+                Source = content.Source,
+                Format = content.Format,
+                Title = content.Title,
+                CoverUrl = content.CoverUrl,
+                Director = content.Director,
+                DurationMinutes = content.DurationMinutes,
+                Year = content.Year,
+                Rating = content.Rating,
+                Genres = content.Genres,
+                Description = content.Description
+            }
         };
         bool newState = await FavoritesService.ToggleFavoriteAsync(item);
-        if (content.IsFavorite != newState) { content.IsFavorite = newState; StateHasChanged(); }
-    }
-
-    private async Task ShareContent() => await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Navigation.Uri);
-    private void NavigateToContent(string source, string externalId) => Navigation.NavigateTo($"/content/{source.ToLower()}/{externalId}");
-
-    private void ScrollCarousel(int direction)
-    {
-        var newIndex = _carouselIndex + direction;
-        if (newIndex >= 0 && newIndex <= MaxCarouselIndex)
+        if (content.IsFavorite != newState)
         {
-            _carouselIndex = newIndex;
+            content.IsFavorite = newState;
             StateHasChanged();
         }
     }
 
-    private void GoToSlide(int index)
+    private async Task ShareContent() => await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Navigation.Uri);
+
+    private void NavigateToContent(string source, string externalId)
     {
-        if (index >= 0 && index <= MaxCarouselIndex)
+        Navigation.NavigateTo($"/content/{source.ToLower()}/{externalId}", forceLoad: true);
+    }
+
+    private void ScrollCarousel(int direction)
+    {
+        var newIndex = _currentIndex + direction;
+        if (newIndex >= 0 && newIndex <= MaxIndex)
         {
-            _carouselIndex = index;
+            _currentIndex = newIndex;
             StateHasChanged();
         }
     }
@@ -247,15 +296,4 @@ else
 
         return "#";
     }
-
-    private string GetProviderBaseUrl(string source)
-    {
-        var normalized = source.ToLowerInvariant();
-        if (normalized == MovieOptions.Value.ActiveProvider.ToLowerInvariant())
-            return MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider].BaseUrl;
-        if (normalized == BookOptions.Value.ActiveProvider.ToLowerInvariant())
-            return BookOptions.Value.Providers[BookOptions.Value.ActiveProvider].BaseUrl;
-        return "#";
-    }
-
 }

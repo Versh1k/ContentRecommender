@@ -72,17 +72,17 @@ public class MoodAnalysisService : IMoodAnalysisService
 
             if (modelPath == null)
             {
-                Console.WriteLine($"[ML] ❌ Модель не найдена. Имя: {modelName}");
+                Console.WriteLine($"[ML] Модель не найдена. Имя: {modelName}");
                 return;
             }
 
             _model = _mlContext.Model.Load(modelPath, out var schema);
             _predictionEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput>(_model);
-            Console.WriteLine("[ML] ✅ Модель загружена и готова к предсказаниям");
+            Console.WriteLine("[ML] Модель загружена и готова к предсказаниям");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ML] ❌ Ошибка загрузки модели: {ex.Message}");
+            Console.WriteLine($"[ML] Ошибка загрузки модели: {ex.Message}");
         }
     }
 
@@ -100,7 +100,7 @@ public class MoodAnalysisService : IMoodAnalysisService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ML] ❌ Ошибка предсказания: {ex.Message}");
+            Console.WriteLine($"[ML] Ошибка предсказания: {ex.Message}");
             return (string.Empty, 0f);
         }
     }

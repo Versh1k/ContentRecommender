@@ -27,7 +27,7 @@ public class GenericBookDetailService : IBookDetailService
         if (!Current.Urls.TryGetValue("GetDetails", out var detailsTemplate))
             return null;
 
-        var url = $"{Current.BaseUrl}{detailsTemplate.Replace("{id}", externalId)}";
+        var url = BuildDetailUrl(externalId, detailsTemplate);
         var response = await _http.GetAsync(url);
         if (!response.IsSuccessStatusCode) return null;
 
@@ -62,7 +62,7 @@ public class GenericBookDetailService : IBookDetailService
         if (!Current.Urls.TryGetValue("SearchByText", out var searchTemplate))
             return new();
 
-        var url = $"{Current.BaseUrl}{searchTemplate.Replace("{query}", query).Replace("{limit}", limit.ToString())}";
+        var url = BuildSearchUrl(query, limit, searchTemplate);
 
         var response = await _http.GetAsync(url);
         if (!response.IsSuccessStatusCode) return new();
@@ -82,5 +82,26 @@ public class GenericBookDetailService : IBookDetailService
                 Rating = b.Rating
             })
             .ToList();
+    }
+
+    private string BuildDetailUrl(string externalId, string template)
+    {
+        var url = $"{Current.BaseUrl}{template.Replace("{id}", externalId)}";
+        return AppendApiKey(url);
+    }
+
+    private string BuildSearchUrl(string query, int limit, string template)
+    {
+        var url = $"{Current.BaseUrl}{template.Replace("{query}", Uri.EscapeDataString(query)).Replace("{limit}", limit.ToString())}";
+        return AppendApiKey(url);
+    }
+
+    private string AppendApiKey(string url)
+    {
+        if (string.IsNullOrEmpty(Current.ApiKey))
+            return url;
+
+        var separator = url.Contains('?') ? '&' : '?';
+        return $"{url}{separator}key={Current.ApiKey}";
     }
 }

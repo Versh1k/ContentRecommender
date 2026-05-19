@@ -44,13 +44,13 @@ public class GenericMovieSearchService : IMovieSearchService
         if (!genreParams.Any() && !string.IsNullOrEmpty(Current.Defaults?.FallbackGenreId))
             genreParams.Add(Current.Defaults.FallbackGenreId);
 
-        Console.WriteLine($"[SearchByGenres] GenreParams=[{string.Join(",", genreParams)}], TargetType={type}");
+        Console.WriteLine($"[SearchByGenres] Параметры жанров=[{string.Join(",", genreParams)}], Целевой тип={type}");
 
         foreach (var genreParam in genreParams)
         {
             var url = _urlBuilder.BuildSearchUrl(genreId: int.TryParse(genreParam, out var id) ? id : null);
             var fetched = await FetchPage(url, type, limit * (Current.Defaults?.SearchMultiplier ?? 1), random);
-            Console.WriteLine($"[SearchByGenres] Fetched {fetched.Count} movies for genre {genreParam}");
+            Console.WriteLine($"[SearchByGenres] Получено {fetched.Count} фильмов для жанра {genreParam}");
             foreach (var movie in fetched)
             {
                 if (!allMovies.Any(m => m.ExternalId == movie.ExternalId))
@@ -58,7 +58,7 @@ public class GenericMovieSearchService : IMovieSearchService
             }
         }
 
-        Console.WriteLine($"[SearchByGenres] Before dedup: {allMovies.Count}");
+        Console.WriteLine($"[SearchByGenres] Перед удалением дубликатов: {allMovies.Count}");
         return allMovies.OrderByDescending(m => m.Rating ?? 0).Take(limit).ToList();
     }
 
@@ -79,32 +79,32 @@ public class GenericMovieSearchService : IMovieSearchService
             var pageRange = Current.Defaults?.PageRange ?? new[] { 1, 4 };
             url += $"{separator}page={random.Next(pageRange[0], pageRange[1])}";
 
-            Console.WriteLine($"[FetchPage] Request: {url}");
+            Console.WriteLine($"[FetchPage] Запрос: {url}");
 
             var response = await _http.GetAsync(url);
             if (!response.IsSuccessStatusCode)
             {
-                Console.WriteLine($"[FetchPage] API error: {response.StatusCode}");
+                Console.WriteLine($"[FetchPage] Ошибка API: {response.StatusCode}");
                 return new();
             }
 
             var json = await response.Content.ReadAsStringAsync();
             var movies = _parser.Parse(json, targetType);
 
-            Console.WriteLine($"[FetchPage] Parsed {movies.Count} movies, TargetType={targetType}");
+            Console.WriteLine($"[FetchPage] Распарсено {movies.Count} фильмов, Целевой тип={targetType}");
 
             if (targetType != ContentTypeCategory.Any)
             {
                 var before = movies.Count;
                 movies = movies.Where(m => m.Category == targetType).ToList();
-                Console.WriteLine($"[FetchPage] Filtered by {targetType}: {before} → {movies.Count}");
+                Console.WriteLine($"[FetchPage] Отфильтровано по {targetType}: {before} → {movies.Count}");
             }
 
             return movies.Take(limit).ToList();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[FetchPage] Exception: {ex.Message}");
+            Console.WriteLine($"[FetchPage] Исключение: {ex.Message}");
             return new();
         }
     }

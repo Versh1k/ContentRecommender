@@ -97,6 +97,21 @@ public class ContentDetailService : IContentDetailService
             }).ToList();
         }
 
+        else if (source.Equals(_bookOptions.ActiveProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            var similar = await _bookDetail.GetSimilarBooksAsync(externalId, limit);
+            return similar.Select(s => new ContentDetailDto
+            {
+                ExternalId = s.ExternalId,
+                Source = source,
+                Title = s.Title,
+                CoverUrl = s.CoverUrl,
+                Year = s.Year,
+                Rating = s.Rating,
+                Format = ContentFormat.Book
+            }).ToList();
+        }
+
         return new List<ContentDetailDto>();
     }
 }

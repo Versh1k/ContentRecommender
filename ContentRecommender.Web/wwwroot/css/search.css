@@ -1,16 +1,13 @@
-﻿/* ===== SEARCH PAGE ===== */
-.search-page {
+﻿.search-page {
     min-height: 100vh;
     background: var(--bg-primary, #0f0f1a);
     padding: 2rem;
-    /* ✅ Переменные темы по умолчанию (фиолетовые) */
     --accent-primary: #7209b7;
     --accent-secondary: #560bad;
     --accent-glow: rgba(114, 9, 183, 0.4);
     --accent-btn-bg: linear-gradient(135deg, #7209b7, #4361ee);
 }
 
-    /* ✅ Синяя тема для режима ключевых слов */
     .search-page.mode-keywords {
         --accent-primary: #4361ee;
         --accent-secondary: #3a0ca3;
@@ -59,7 +56,6 @@
     margin: 0;
 }
 
-/* ===== ТИПЫ КОНТЕНТА ===== */
 .type-selector {
     display: flex;
     flex-wrap: wrap;
@@ -86,7 +82,6 @@
         color: white;
     }
 
-    /* ✅ АКТИВНАЯ КНОПКА ТИПА С НОВОЙ ТЕМОЙ */
     .type-btn.active {
         background: var(--accent-btn-bg) !important;
         border-color: transparent !important;
@@ -94,7 +89,6 @@
         box-shadow: 0 4px 15px var(--accent-glow) !important;
     }
 
-/* ===== НОВАЯ СТРУКТУРА ПОИСКА С КНОПКОЙ ===== */
 .search-box-wrapper {
     display: flex;
     width: 100%;
@@ -103,7 +97,6 @@
     overflow: hidden;
 }
 
-/* Кнопка переключения режимов */
 .mode-toggle-btn {
     display: flex;
     align-items: center;
@@ -134,7 +127,6 @@
         flex-shrink: 0;
     }
 
-/* Поле ввода (справа от кнопки) */
 .search-box-wrapper .search-box {
     flex: 1;
     display: flex;
@@ -166,7 +158,6 @@
         color: rgba(255, 255, 255, 0.4);
     }
 
-/* Кнопка "Найти" */
 .search-btn {
     width: 100%;
     padding: 1rem;
@@ -192,7 +183,6 @@
         transform: none;
     }
 
-/* ===== ВЫПАДАШКА ЖАНРОВ ===== */
 .genres-dropdown {
     position: relative;
     width: 100%;
@@ -328,7 +318,6 @@
         background: rgba(230, 57, 70, 0.1);
     }
 
-/* ===== ЖАНРЫ (РЕЗУЛЬТАТЫ) ===== */
 .genres-section {
     margin-bottom: 2rem;
 }
@@ -359,7 +348,6 @@
     box-shadow: 0 2px 10px var(--accent-glow);
 }
 
-/* ===== РЕЗУЛЬТАТЫ ===== */
 .results-title {
     font-size: 1.5rem;
     font-weight: 600;
@@ -367,7 +355,6 @@
     margin-bottom: 1.5rem;
 }
 
-/* ===== АДАПТИВНОСТЬ ===== */
 @media (max-width: 768px) {
     .search-page {
         padding: 1rem;
@@ -413,3 +400,25 @@
         grid-template-columns: 1fr;
     }
 }
+.random-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--accent-primary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+    .random-btn:hover {
+        background: var(--accent-btn-bg);
+        border-color: transparent;
+        color: white;
+        transform: rotate(15deg);
+        box-shadow: 0 4px 15px var(--accent-glow);
+    }

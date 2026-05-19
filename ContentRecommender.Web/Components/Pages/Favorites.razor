@@ -36,11 +36,19 @@
         </div>
 
         <div class="favorites-filters">
-            <button class="filter-btn @(filterFormat == null ? "active" : "")" @onclick="() => SetFilter(null)">Все</button>
-            <button class="filter-btn @(filterFormat == ContentFormat.Movie ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Movie)"> Фильмы</button>
-            <button class="filter-btn @(filterFormat == ContentFormat.Series ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Series)"> Сериалы</button>
-            <button class="filter-btn @(filterFormat == ContentFormat.Cartoon ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Cartoon)"> Мультфильмы</button>
-            <button class="filter-btn @(filterFormat == ContentFormat.Book ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Book)"> Книги</button>
+            <button class="filter-btn type-movie @(filterFormat == ContentFormat.Movie ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Movie)"> Фильмы</button>
+            <button class="filter-btn type-series @(filterFormat == ContentFormat.Series ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Series)"> Сериалы</button>
+            <button class="filter-btn type-cartoon @(filterFormat == ContentFormat.Cartoon ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Cartoon)"> Мультфильмы</button>
+            <button class="filter-btn type-book @(filterFormat == ContentFormat.Book ? "active" : "")" @onclick="() => SetFilter(ContentFormat.Book)"> Книги</button>
+        </div>
+
+        <div class="status-filters">
+            <button class="status-filter-btn @(filterStatus == null ? "active" : "")" @onclick="() => SetStatusFilter(null)">Все</button>
+            <button class="status-filter-btn @(filterStatus == FavoriteStatus.Planned ? "active" : "")" @onclick="() => SetStatusFilter(FavoriteStatus.Planned)">В планах</button>
+            <button class="status-filter-btn @(filterStatus == FavoriteStatus.InProgress ? "active" : "")" @onclick="() => SetStatusFilter(FavoriteStatus.InProgress)">В процессе</button>
+            <button class="status-filter-btn @(filterStatus == FavoriteStatus.Completed ? "active" : "")" @onclick="() => SetStatusFilter(FavoriteStatus.Completed)">Просмотрено</button>
+            <button class="status-filter-btn @(filterStatus == FavoriteStatus.Postponed ? "active" : "")" @onclick="() => SetStatusFilter(FavoriteStatus.Postponed)">Отложено</button>
+            <button class="status-filter-btn @(filterStatus == FavoriteStatus.Dropped ? "active" : "")" @onclick="() => SetStatusFilter(FavoriteStatus.Dropped)">Брошено</button>
         </div>
 
         @if (isLoading)
@@ -71,7 +79,9 @@
                     {
                         <ContentCard Item="contentItem"
                                      IsFavorite="true"
-                                     OnFavoriteChanged="RemoveFromFavoritesItem" />
+                                     OnFavoriteChanged="RemoveFromFavoritesItem"
+                                     Status="fav.Status"
+                                     OnStatusChanged="(status) => ChangeStatusAsync(fav, status)" />
                     }
                 }
             </div>
@@ -84,19 +94,45 @@
     private List<FavoriteItem> filteredFavorites = new();
     private bool isLoading = true;
     private ContentFormat? filterFormat;
+    private FavoriteStatus? filterStatus = null;
     private string? _currentUserId;
     private bool _isDisposed = false;
     private bool _isLoadingInProgress = false;
+
     protected override async Task OnInitializedAsync()
     {
         Console.WriteLine(" Favorites.razor: OnInitializedAsync");
         _currentUserId = await GetCurrentUserIdAsync();
         Console.WriteLine($" UserId: {_currentUserId}");
-        
         await LoadFavorites();
-        
         FavoritesService.OnFavoritesChanged += OnFavoritesChangedHandler;
     }
+
+    private async Task ChangeStatusAsync(FavoriteItem item, FavoriteStatus newStatus)
+    {
+        if (item == null) return;
+        var success = await FavoritesService.UpdateStatusAsync(item.ExternalId, item.Source, newStatus);
+        if (success)
+        {
+            item.Status = newStatus;
+            ApplyFilter();
+            StateHasChanged();
+        }
+    }
+    private void SetStatusFilter(FavoriteStatus? status)
+    {
+        filterStatus = status;
+        ApplyFilter();
+        StateHasChanged();
+    }
+    private string GetFormatLabel(ContentFormat format) => format switch
+    {
+        ContentFormat.Movie => "Фильм",
+        ContentFormat.Series => "Сериал",
+        ContentFormat.Cartoon => "Мультфильм",
+        ContentFormat.Book => "Книга",
+        _ => "Контент"
+    };
 
     private async void OnFavoritesChangedHandler()
     {
@@ -121,20 +157,16 @@
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState?.User;
-
         Console.WriteLine($" User authenticated: {user?.Identity?.IsAuthenticated}");
-
         if (user?.Identity?.IsAuthenticated != true)
             return null;
 
         var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-
         if (string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(user.Identity.Name))
         {
             var appUser = await UserManager.FindByNameAsync(user.Identity.Name!);
             userId = appUser?.Id;
         }
-
         return userId;
     }
 
@@ -145,18 +177,14 @@
             Console.WriteLine(" Загрузка уже в процессе, пропускаем");
             return;
         }
-
         _isLoadingInProgress = true;
-        
         try
         {
             isLoading = true;
             StateHasChanged();
-
             if (!string.IsNullOrEmpty(_currentUserId))
             {
                 await Task.Delay(100);
-                
                 var loadedFavorites = await FavoritesRepository.GetUserFavoritesAsync(_currentUserId, filterFormat);
                 favorites = loadedFavorites ?? new List<FavoriteItem>();
                 Console.WriteLine($" Загружено {favorites.Count} элементов избранного");
@@ -192,23 +220,25 @@
 
     private void ApplyFilter()
     {
-        filteredFavorites = filterFormat.HasValue
-            ? favorites.Where(f => f.Format == filterFormat.Value).ToList()
-            : favorites;
-        
-        Console.WriteLine($" filteredFavorites: {filteredFavorites.Count} (filter: {filterFormat?.ToString() ?? "null"})");
+        var query = favorites.AsEnumerable();
+
+        if (filterFormat.HasValue)
+            query = query.Where(f => f.Format == filterFormat.Value);
+
+        if (filterStatus.HasValue)
+            query = query.Where(f => f.Status == filterStatus.Value);
+
+        filteredFavorites = query.ToList();
     }
 
     private ContentItem? ConvertToContentItem(FavoriteItem fav)
     {
         if (fav == null) return null;
-
         try
         {
             var genres = !string.IsNullOrEmpty(fav.GenresJson)
                 ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(fav.GenresJson)
                 : new List<string>();
-
             if (fav.Format == ContentFormat.Book)
             {
                 return new Book
@@ -245,21 +275,28 @@
 
     private async Task RemoveFromFavoritesItem(ContentItem item)
     {
+        if (item == null) return;
+        await RemoveByExternalIdAsync(item.ExternalId, item.Source);
+    }
+
+    private async Task RemoveFromFavoritesItem(FavoriteItem fav)
+    {
+        if (fav == null) return;
+        await RemoveByExternalIdAsync(fav.ExternalId, fav.Source);
+    }
+
+    private async Task RemoveByExternalIdAsync(string? externalId, string? source)
+    {
+        if (string.IsNullOrEmpty(externalId) || string.IsNullOrEmpty(source))
+            return;
         try
         {
-            Console.WriteLine($" RemoveFromFavoritesItem: {item.Title}");
-
-            if (!string.IsNullOrEmpty(_currentUserId) && !string.IsNullOrEmpty(item.ExternalId))
+            if (!string.IsNullOrEmpty(_currentUserId))
             {
                 await Task.Delay(200);
-                
                 var removed = await FavoritesRepository.RemoveFromFavoritesAsync(
-                    _currentUserId,
-                    item.ExternalId,
-                    item.Source);
-
+                    _currentUserId, externalId, source);
                 Console.WriteLine($" Удалено: {removed}");
-
                 if (removed)
                 {
                     await Task.Delay(300);
