@@ -4,7 +4,6 @@ using ContentRecommender.Core.Models;
 using ContentRecommender.Core.Services;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace ContentRecommender.Web.Services.MovieSearch;
 
@@ -58,14 +57,15 @@ public class GenericMovieDetailService : IMovieDetailService
     public async Task<List<MovieSummaryDto>> GetSimilarMoviesAsync(string externalId, int limit = 9)
     {
         var ss = Current.SimilarSettings;
-        if (ss == null || !Current.Urls.TryGetValue("Похожие", out var similarTemplate) || string.IsNullOrEmpty(similarTemplate))
+        // ИСПРАВЛЕНО: ключ "GetSimilar" вместо "Похожие"
+        if (ss == null || !Current.Urls.TryGetValue("GetSimilar", out var similarTemplate) || string.IsNullOrEmpty(similarTemplate))
         {
             Console.WriteLine($"[Similar] Нет настроек для провайдера {_options.ActiveProvider}");
             return new();
         }
 
         var url = $"{Current.BaseUrl}{similarTemplate.Replace("{id}", externalId)}";
-        Console.WriteLine($"[Similar] Запрос URL-адреса: {url}");
+        Console.WriteLine($"[Similar] Запрос URL: {url}");
 
         try
         {
@@ -74,12 +74,12 @@ public class GenericMovieDetailService : IMovieDetailService
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"[Similar] Ошибка: {error}");
+                Console.WriteLine($"[Similar] Ошибка ответа: {error}");
                 return new();
             }
 
             var json = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"[Similar] JSON: {json.Substring(0, Math.Min(json.Length, 200))}");
+            Console.WriteLine($"[Similar] JSON (первые 200 символов): {json.Substring(0, Math.Min(json.Length, 200))}");
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
@@ -87,11 +87,11 @@ public class GenericMovieDetailService : IMovieDetailService
 
             if (JsonParserHelper.TryGetProperty(root, ss.RootArrayKey, out var items) && items.ValueKind == JsonValueKind.Array)
             {
-                Console.WriteLine($"[Similar] Найдено {items.GetArrayLength()} в '{ss.RootArrayKey}'");
+                Console.WriteLine($"[Similar] Найдено {items.GetArrayLength()} элементов в '{ss.RootArrayKey}'");
                 foreach (var item in items.EnumerateArray().Take(limit))
                 {
                     var id = JsonParserHelper.GetString(item, ss.IdKey);
-                    Console.WriteLine($"[Similar] Items: {id}");
+                    Console.WriteLine($"[Similar] ID элемента: {id}");
                     if (string.IsNullOrEmpty(id)) continue;
 
                     var title = ss.TitleKeys?.Select(k => JsonParserHelper.GetString(item, k))
@@ -109,14 +109,14 @@ public class GenericMovieDetailService : IMovieDetailService
             }
             else
             {
-                Console.WriteLine($"[Similar] Массив '{ss.RootArrayKey}' не найден");
+                Console.WriteLine($"[Similar] Корневой массив '{ss.RootArrayKey}' не найден или не является массивом");
             }
-            Console.WriteLine($"[Similar] Возвращено {similar.Count} похожих");
+            Console.WriteLine($"[Similar] Возвращено {similar.Count} похожих фильмов");
             return similar;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Similar] Ошибка {externalId}: {ex.Message}");
+            Console.WriteLine($"[Similar] Ошибка для {externalId}: {ex.Message}");
             return new();
         }
     }
