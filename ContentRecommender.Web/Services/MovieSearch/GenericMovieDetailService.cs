@@ -57,7 +57,6 @@ public class GenericMovieDetailService : IMovieDetailService
     public async Task<List<MovieSummaryDto>> GetSimilarMoviesAsync(string externalId, int limit = 9)
     {
         var ss = Current.SimilarSettings;
-        // ИСПРАВЛЕНО: ключ "GetSimilar" вместо "Похожие"
         if (ss == null || !Current.Urls.TryGetValue("GetSimilar", out var similarTemplate) || string.IsNullOrEmpty(similarTemplate))
         {
             Console.WriteLine($"[Similar] Нет настроек для провайдера {_options.ActiveProvider}");

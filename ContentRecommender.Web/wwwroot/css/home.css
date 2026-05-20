@@ -1,5 +1,4 @@
-﻿/* ===== HOME PAGE ===== */
-.home-page {
+﻿.home-page {
     min-height: 100vh;
     background: var(--bg-primary, #0f0f1a);
     padding: 2rem;
@@ -74,7 +73,6 @@
         text-align: center;
     }
 
-/* ===== HERO ===== */
 .hero-section {
     position: relative;
     text-align: center;
@@ -137,7 +135,6 @@
     font-size: 1.2rem;
 }
 
-/* ===== FEATURES ===== */
 .features-section {
     margin-bottom: 2rem;
 }
@@ -189,7 +186,6 @@
     line-height: 1.6;
 }
 
-/* ===== АДАПТИВНОСТЬ ===== */
 @media (max-width: 768px) {
     .home-page {
         padding: 1rem;

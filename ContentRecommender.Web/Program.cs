@@ -42,7 +42,6 @@ builder.Services.AddSingleton(bookOptions);
 builder.Services.AddSingleton<IOptions<MovieApiOptions>>(new OptionsWrapper<MovieApiOptions>(movieOptions));
 builder.Services.AddSingleton<IOptions<BookApiOptions>>(new OptionsWrapper<BookApiOptions>(bookOptions));
 
-// ОСТАЛЬНЫЕ СЕРВИСЫ
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddControllers();
 builder.Services.AddRazorPages().AddRazorRuntimeCompilation();
@@ -190,6 +189,7 @@ using (var scope = app.Services.CreateScope())
 app.Run();
 
 // JSON 
+
 public class AppSettingsRoot
 {
     public MovieApiOptions MovieApi { get; set; } = new();

@@ -51,6 +51,10 @@ else
                 {
                     <img src="@content.CoverUrl" alt="@content.Title" />
                 }
+                else
+                {
+                    <div class="no-poster">📷</div>
+                }
             </div>
             <div class="detail-info">
                 <h1 class="detail-title">@content.Title</h1>
@@ -81,7 +85,9 @@ else
                         }
                     </div>
                 }
-                <div class="detail-description"><p>@(content.Description ?? "Описание отсутствует")</p></div>
+                <div class="detail-description">
+                    <p>@(content.Description ?? "Описание отсутствует")</p>
+                </div>
                 @if (!string.IsNullOrEmpty(content.Director))
                 {
                     <div class="detail-crew"><strong>Режиссёр:</strong> @content.Director</div>
@@ -103,11 +109,12 @@ else
             <div class="similar-section">
                 <h2>Похожие рекомендации</h2>
                 <div class="carousel-wrapper">
-                    <button class="carousel-btn prev" @onclick="() => ScrollCarousel(-1)" disabled="@(_currentIndex == 0)">
-                        ‹
-                    </button>
-                    <div class="carousel-track" style="transform: translateX(-@(ScrollOffsetPx)px);">
-                        @foreach (var similar in content.SimilarItems.Take(MaxItems))
+                    @if (content.SimilarItems.Count > 4)
+                    {
+                        <button class="carousel-btn prev" @onclick="Prev" disabled="@(_startIndex == 0)">‹</button>
+                    }
+                    <div class="carousel-track">
+                        @foreach (var similar in visibleItems)
                         {
                             <div class="carousel-card" @onclick="() => NavigateToContent(similar.Source, similar.ExternalId)">
                                 @if (!string.IsNullOrEmpty(similar.CoverUrl))
@@ -134,9 +141,10 @@ else
                             </div>
                         }
                     </div>
-                    <button class="carousel-btn next" @onclick="() => ScrollCarousel(1)" disabled="@(_currentIndex >= MaxIndex)">
-                        ›
-                    </button>
+                    @if (content.SimilarItems.Count > 4)
+                    {
+                        <button class="carousel-btn next" @onclick="Next" disabled="@(_startIndex + 4 >= content.SimilarItems.Count)">›</button>
+                    }
                 </div>
             </div>
         }
@@ -149,12 +157,18 @@ else
 
     private ContentDetailDto? content;
     private bool isLoading = true;
-    private int _currentIndex = 0;
-    private const int MaxItems = 20;
-    private int _cardWidth = 200;
-    private int _gap = 20;
-    private int MaxIndex => Math.Max(0, (content?.SimilarItems?.Count ?? 0) - 1);
-    private int ScrollOffsetPx => _currentIndex * (_cardWidth + _gap);
+    private const int VisibleCount = 4;
+    private int _startIndex = 0;
+
+    private List<ContentDetailDto> visibleItems
+    {
+        get
+        {
+            if (content?.SimilarItems == null || !content.SimilarItems.Any())
+                return new List<ContentDetailDto>();
+            return content.SimilarItems.Skip(_startIndex).Take(VisibleCount).ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync() => await LoadContent();
     protected override async Task OnParametersSetAsync() => await LoadContent();
@@ -164,24 +178,13 @@ else
         try
         {
             isLoading = true;
-            _currentIndex = 0;
+            _startIndex = 0;
             content = await DetailService.GetContentDetailsAsync(Source, Id);
             if (content != null)
             {
-                content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, MaxItems);
+                content.SimilarItems = await DetailService.GetSimilarContentAsync(Source, Id, 50);
                 content.IsFavorite = await FavoritesService.IsFavoriteAsync(content.ExternalId, content.Source);
             }
-            await JSRuntime.InvokeVoidAsync("eval", @"
-                setTimeout(() => {
-                    const card = document.querySelector('.carousel-card');
-                    if (card) {
-                        const width = card.offsetWidth;
-                        const style = getComputedStyle(card.parentElement);
-                        const gap = parseFloat(style.gap) || 20;
-                        DotNet.invokeMethodAsync('ContentRecommender.Web', 'SetCardDimensions', width, gap);
-                    }
-                }, 100);
-            ");
         }
         catch (Exception ex)
         {
@@ -195,12 +198,22 @@ else
         }
     }
 
-    [JSInvokable]
-    public void SetCardDimensions(int width, int gap)
+    private void Prev()
     {
-        _cardWidth = width;
-        _gap = gap;
-        StateHasChanged();
+        if (_startIndex > 0)
+        {
+            _startIndex--;
+            StateHasChanged();
+        }
+    }
+
+    private void Next()
+    {
+        if (content?.SimilarItems != null && _startIndex + VisibleCount < content.SimilarItems.Count)
+        {
+            _startIndex++;
+            StateHasChanged();
+        }
     }
 
     private async Task ToggleFavorite()
@@ -252,16 +265,6 @@ else
         Navigation.NavigateTo($"/content/{source.ToLower()}/{externalId}", forceLoad: true);
     }
 
-    private void ScrollCarousel(int direction)
-    {
-        var newIndex = _currentIndex + direction;
-        if (newIndex >= 0 && newIndex <= MaxIndex)
-        {
-            _currentIndex = newIndex;
-            StateHasChanged();
-        }
-    }
-
     private string GetExternalButtonText(string source)
     {
         var normalized = source.ToLowerInvariant();
@@ -277,23 +280,13 @@ else
         var normalized = source.ToLowerInvariant();
         var movieProvider = MovieOptions.Value.ActiveProvider.ToLowerInvariant();
         var bookProvider = BookOptions.Value.ActiveProvider.ToLowerInvariant();
-
         ProviderConfig? provider = null;
-
         if (normalized == movieProvider)
-        {
             provider = MovieOptions.Value.Providers[MovieOptions.Value.ActiveProvider];
-        }
         else if (normalized == bookProvider)
-        {
             provider = BookOptions.Value.Providers[BookOptions.Value.ActiveProvider];
-        }
-
         if (provider != null && !string.IsNullOrEmpty(provider.PublicLinkTemplate))
-        {
             return provider.PublicLinkTemplate.Replace("{id}", externalId);
-        }
-
         return "#";
     }
 }

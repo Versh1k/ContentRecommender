@@ -53,11 +53,11 @@
                     <line x1="4" y1="4" x2="9" y2="9" />
                 </svg>
             </button>
-            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.All ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.All)">Всё</button>
-            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.Movies ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.Movies)"> Фильмы</button>
-            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.TvSeries ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.TvSeries)"> Сериалы</button>
-            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.Cartoons ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.Cartoons)"> Мультфильмы</button>
-            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.AllBooks ? "active" : "")" @onclick="() => SetType(SearchCriteria.SearchContentType.AllBooks)"> Книги</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.All ? "active" : "")" data-type="All" @onclick="() => SetType(SearchCriteria.SearchContentType.All)">Всё</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.Movies ? "active" : "")" data-type="Movies" @onclick="() => SetType(SearchCriteria.SearchContentType.Movies)">Фильмы</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.TvSeries ? "active" : "")" data-type="TvSeries" @onclick="() => SetType(SearchCriteria.SearchContentType.TvSeries)">Сериалы</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.Cartoons ? "active" : "")" data-type="Cartoons" @onclick="() => SetType(SearchCriteria.SearchContentType.Cartoons)">Мультфильмы</button>
+            <button class="type-btn @(selectedContentType == SearchCriteria.SearchContentType.AllBooks ? "active" : "")" data-type="Books" @onclick="() => SetType(SearchCriteria.SearchContentType.AllBooks)">Книги</button>
         </div>
 
         <div class="search-box-wrapper">
@@ -138,9 +138,11 @@
                 <div class="cards-grid">
                     @foreach (var item in results)
                     {
-                        <ContentCard Item="item"
-                                     IsFavorite="@(IsItemFavorite(item.ExternalId, item.Source))"
-                                     OnFavoriteChanged="ToggleFavorite" />
+                        <div class="content-card @GetCardTypeClass(item)">
+                            <ContentCard Item="item"
+                                         IsFavorite="@(IsItemFavorite(item.ExternalId, item.Source))"
+                                         OnFavoriteChanged="ToggleFavorite" />
+                        </div>
                     }
                 </div>
             </div>
@@ -226,7 +228,8 @@
                                 Genres = r.Genres ?? new List<string>()
                             } as ContentItem;
                         else
-                            return new Movie
+                        {
+                            var movie = new Movie
                             {
                                 ExternalId = r.ExternalId,
                                 Source = r.Source,
@@ -236,7 +239,11 @@
                                 Year = r.Year,
                                 Rating = r.Rating,
                                 Genres = r.Genres ?? new List<string>()
-                            } as ContentItem;
+                            };
+                            if (!string.IsNullOrEmpty(r.Category) && Enum.TryParse<ContentTypeCategory>(r.Category, out var cat))
+                                movie.Category = cat;
+                            return movie;
+                        }
                     }).ToList();
 
                     Console.WriteLine($"Восстановлено {results.Count} результатов");
@@ -303,7 +310,7 @@
     private void SetType(SearchCriteria.SearchContentType type)
     {
         selectedContentType = type;
-        if (!string.IsNullOrWhiteSpace(currentSearchQuery)) _ = PerformSearch();
+        StateHasChanged();
     }
 
     private void ToggleSearchMode()
@@ -344,6 +351,21 @@
         currentSearchMode = SearchMode.ByMood;
 
         await PerformSearch();
+    }
+
+    private string GetCardTypeClass(ContentItem item)
+    {
+        if (item is Movie movie)
+        {
+            if (movie.Category == ContentTypeCategory.TvSeries)
+                return "series";
+            if (movie.Category == ContentTypeCategory.Cartoon)
+                return "cartoon";
+            return "movie";
+        }
+        if (item is Book) return "book";
+        if (item.Format == ContentFormat.Cartoon) return "cartoon";
+        return "movie";
     }
 
     private async Task PerformSearch()
@@ -403,7 +425,7 @@
                     finalResults.AddRange(books);
                 }
             }
-            else // ByKeywords
+            else
             {
                 detectedMood = null;
                 recommendedGenres.Clear();

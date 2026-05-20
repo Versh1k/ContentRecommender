@@ -238,22 +238,22 @@
     }
 .filter-btn.type-movie {
     border-color: rgba(33, 150, 243, 0.5);
-    color: #2196f3;
+    color: #9ca3af;
 }
 
 .filter-btn.type-series {
     border-color: rgba(76, 175, 80, 0.5);
-    color: #4caf50;
+    color: #9ca3af;
 }
 
 .filter-btn.type-cartoon {
     border-color: rgba(255, 152, 0, 0.5);
-    color: #ff9800;
+    color: #9ca3af;
 }
 
 .filter-btn.type-book {
     border-color: rgba(156, 39, 176, 0.5);
-    color: #9c27b0;
+    color: #9ca3af;
 }
 
 .filter-btn.type-movie.active {

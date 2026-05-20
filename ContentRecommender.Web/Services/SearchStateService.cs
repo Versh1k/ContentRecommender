@@ -16,7 +16,6 @@ public class SearchStateService : ISearchStateService
 {
     private readonly IJSRuntime _js;
     private SearchState? _currentState;
-    private string userId;
 
     public SearchStateService(IJSRuntime js)
     {
@@ -28,13 +27,13 @@ public class SearchStateService : ISearchStateService
         try
         {
             _currentState = new SearchState
+
             {
                 Query = query,
                 Genres = genres,
                 Mood = mood,
                 ContentType = contentType.ToString(),
                 Timestamp = DateTime.UtcNow.Ticks,
-                UserId = userId,
                 SavedResults = results.Select(r => new SavedResult
                 {
                     ExternalId = r.ExternalId,
@@ -44,17 +43,31 @@ public class SearchStateService : ISearchStateService
                     Year = r.Year,
                     Rating = r.Rating,
                     Format = r.Format,
-                    Genres = r.Genres
+                    Genres = r.Genres,
+                    Category = GetCategoryString(r)
                 }).Take(20).ToList()
             };
 
             await _js.InvokeVoidAsync("localStorage.setItem", "searchState",
-                System.Text.Json.JsonSerializer.Serialize(_currentState));
+                JsonSerializer.Serialize(_currentState));
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Ошибка сохранения состояния: {ex.Message}");
         }
+    }
+
+    private string GetCategoryString(ContentItem item)
+    {
+        if (item is Movie movie)
+        {
+            return movie.Category.ToString();
+        }
+        if (item is Book)
+        {
+            return "Book";
+        }
+        return item.Format.ToString();
     }
 
     public async Task<SearchState?> GetSearchStateAsync()
@@ -64,10 +77,13 @@ public class SearchStateService : ISearchStateService
             if (_currentState != null)
                 return _currentState;
 
+            if (_currentState == null) return null;
+
             var json = await _js.InvokeAsync<string>("localStorage.getItem", "searchState");
             if (string.IsNullOrEmpty(json))
                 return null;
             _currentState = JsonSerializer.Deserialize<SearchState>(json);
+
             return _currentState;
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("JavaScript interop"))
@@ -116,5 +132,6 @@ public class SearchStateService : ISearchStateService
         public double? Rating { get; set; }
         public ContentFormat Format { get; set; }
         public List<string>? Genres { get; set; }
+        public string? Category { get; set; }
     }
 }

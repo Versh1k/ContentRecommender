@@ -48,9 +48,8 @@ public class MoodAnalysisService : IMoodAnalysisService
     {
         try
         {
-            var modelName = !string.IsNullOrEmpty(_moodOptions.ModelFileName)
-                ? _moodOptions.ModelFileName
-                : "MoodAnalyzer(700prim_na_class).zip";
+            var modelName = _moodOptions.ModelFileName
+            ?? throw new InvalidOperationException("Не задано имя файла модели (MoodModel: ModelFileName) в конфигурации.");
 
             var possiblePaths = new[]
             {

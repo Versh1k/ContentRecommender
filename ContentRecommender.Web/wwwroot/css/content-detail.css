@@ -99,15 +99,11 @@
     margin-bottom: 3rem;
 }
 
-.detail-poster {
-    position: relative;
+.detail-poster img {
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
-
-    .detail-poster img {
-        width: 100%;
-        border-radius: 12px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-    }
 
 .no-poster {
     width: 100%;
@@ -195,34 +191,18 @@
     margin-top: 1rem;
 }
 
-.btn-trailer,
 .btn-external {
     padding: 0.75rem 1.5rem;
     border-radius: 8px;
     font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
     text-decoration: none;
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-}
-
-.btn-trailer {
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    border: none;
-}
-
-    .btn-trailer:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-    }
-
-.btn-external {
     background: rgba(255, 255, 255, 0.1);
     color: white;
     border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.2s;
 }
 
     .btn-external:hover {
@@ -336,30 +316,26 @@
     .similar-section h2 {
         font-size: 1.8rem;
         margin-bottom: 1.8rem;
-        color: var(--text-primary, #fff);
+        color: #fff;
         font-weight: 600;
         text-align: center;
     }
 
 .carousel-wrapper {
-    position: relative;
     display: flex;
     align-items: center;
-    gap: 1rem;
     justify-content: center;
+    gap: 1rem;
 }
 
 .carousel-track {
-    display: flex;
-    gap: 1.25rem;
-    transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    width: 100%;
-    overflow: visible;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.5rem;
+    flex: 1;
 }
 
 .carousel-card {
-    flex: 0 0 auto;
-    width: 220px;
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(4px);
     border-radius: 20px;
@@ -368,26 +344,39 @@
     transition: all 0.3s ease;
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    animation: fadeInUp 0.5s ease;
 }
 
-    .carousel-card:hover {
-        transform: translateY(-8px) scale(1.02);
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(102, 126, 234, 0.6);
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(102, 126, 234, 0.3);
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
     }
 
-    .carousel-card img {
-        width: 100%;
-        aspect-ratio: 2/3;
-        object-fit: cover;
-        display: block;
-        transition: transform 0.3s ease;
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
+}
 
-    .carousel-card:hover img {
-        transform: scale(1.05);
-    }
+.carousel-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(102, 126, 234, 0.6);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(102, 126, 234, 0.3);
+}
+
+.carousel-card img {
+    width: 100%;
+    aspect-ratio: 2/3;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s ease;
+}
+
+.carousel-card:hover img {
+    transform: scale(1.05);
+}
 
 .no-poster-small {
     width: 100%;
@@ -408,7 +397,7 @@
         font-size: 1rem;
         font-weight: 600;
         margin: 0 0 0.5rem 0;
-        color: var(--text-primary, #fff);
+        color: #fff;
         line-height: 1.4;
         display: -webkit-box;
         -webkit-line-clamp: 2;
@@ -430,7 +419,7 @@
 }
 
 .carousel-year {
-    color: var(--text-secondary, #9ca3af);
+    color: #9ca3af;
 }
 
 .carousel-btn {
@@ -444,7 +433,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-primary, #fff);
+    color: #fff;
     transition: all 0.2s ease;
     flex-shrink: 0;
     backdrop-filter: blur(8px);
@@ -463,52 +452,40 @@
         transform: none;
     }
 
-/* Адаптивность */
-@media (min-width: 1400px) {
-    .carousel-card {
-        width: 260px;
-    }
-
-    .carousel-track {
-        gap: 1.5rem;
-    }
-}
-
 @media (max-width: 1200px) {
-    .carousel-card {
-        width: 220px;
+    .carousel-track {
+        gap: 1rem;
     }
 }
 
 @media (max-width: 992px) {
-    .carousel-card {
-        width: 200px;
+    .carousel-track {
+        gap: 0.75rem;
     }
 }
 
 @media (max-width: 768px) {
-    .carousel-card {
-        width: 180px;
-    }
-
     .carousel-btn {
         width: 36px;
         height: 36px;
         font-size: 1.2rem;
     }
+}
+
+@media (max-width: 650px) {
+    .carousel-track {
+        grid-template-columns: repeat(4, minmax(120px, 1fr));
+        gap: 0.5rem;
+    }
 
     .carousel-info h4 {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
     }
 }
 
-@media (max-width: 576px) {
-    .carousel-card {
-        width: 160px;
-    }
-
+@media (max-width: 550px) {
     .carousel-track {
-        gap: 0.75rem;
+        grid-template-columns: repeat(4, minmax(100px, 1fr));
     }
 }
 

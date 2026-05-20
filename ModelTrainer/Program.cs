@@ -48,7 +48,6 @@ class Program
             "everyday", "tense", "horror", "inspiring", "epic", "adventure"
         };
 
-        Console.WriteLine(" Загрузка данных...");
         var allData = mlContext.Data.LoadFromTextFile<ModelInput>(
             dataFile, hasHeader: true, separatorChar: '|', allowQuoting: true, trimWhitespace: true);
 

@@ -48,8 +48,6 @@ public class ContentDetailService : IContentDetailService
                 DurationMinutes = movie.DurationMinutes,
                 Director = movie.Director,
                 Actors = movie.Actors,
-                Trailers = movie.Trailers?.Select(v => new TrailerDto
-                { Title = v.Title, YouTubeId = v.YouTubeId }).ToList(),
                 IsFavorite = !string.IsNullOrEmpty(userId) &&
                     await _favorites.IsFavoriteAsync(userId, externalId, movie.Source)
             };
